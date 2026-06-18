@@ -6,6 +6,8 @@ This repository contains our solution for the IJCAI 2026 DDL 2.0 track 2 competi
 - **Video Detector**: based on the DINOv3-ViT-L/16 image encoder + GPS-DINO multi-granularity classifier to classify video as real or fake.
 - **Fusion Post-processing**: combines audio and video probability predictions to produce both binary (real/fake) and four-class (RR / FF / FR / RF) outputs.
 
+Detector Model Weights: https://drive.google.com/drive/u/0/folders/1jClj7dZTBDAiyLefIwwxldNHOibhHUBF
+
 ---
 
 ## Directory Structure
