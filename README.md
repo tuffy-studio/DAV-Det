@@ -1,12 +1,15 @@
-# Introduction
+# Overview
 
-This repository contains our solution for the IJCAI 2026 DDL 2.0 track 2 competition. It implements a **Decoupled Audio-Visual AIGC detection system**:
+This repository contains the solution of our team (HIT VIRLAB) for the General AIGC Audio-Video Detection (track 2) at IJCAI-ECAI 2026 DDL 2.0 workshop. 
+
+
+It implements a **Decoupled Audio-Visual AIGC detection system**:
 
 - **Audio Detector**: based on the PE-AV audio encoder + AASIST-style backend to classify audio as real or fake.
 - **Video Detector**: based on the DINOv3-ViT-L/16 image encoder + GPS-DINO multi-granularity classifier to classify video as real or fake.
 - **Fusion Post-processing**: combines audio and video probability predictions to produce both binary (real/fake) and four-class (RR / FF / FR / RF) outputs.
 
-Detector Model Weights: https://drive.google.com/drive/u/0/folders/1jClj7dZTBDAiyLefIwwxldNHOibhHUBF
+Detector Model Weights are available at: https://drive.google.com/drive/u/0/folders/1jClj7dZTBDAiyLefIwwxldNHOibhHUBF
 
 ---
 
@@ -321,4 +324,3 @@ FF = P(audio fake) * P(video fake)
 FR = P(audio fake) * P(video real)
 RF = P(audio real) * P(video fake)
 ```
-# DAV-Det

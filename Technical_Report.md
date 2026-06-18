@@ -1,21 +1,28 @@
 # DAV-Det: Technical Report
 
 ## 1. Introduction
+The rapid advancement of generative AI has significantly increased the threat of highly realistic audio-visual forgeries, creating an urgent need for reliable detectors.
 
-This technical report describes the methodology, network architecture, data augmentation strategies, and training details of **DAV-Det**, a dual-branch deepfake detection system submitted to the IJCAI 2026 Deepfake Detection Competition.
+Existing approaches assume strong semantic correspondence between real audio and video and therefore exploit audio-visual inconsistencies to detect AIGC.
 
-The task is to determine whether a given video is real or fake. Since a video contains both audio and visual streams, we design two independent detectors:
+we revisit this assumption in the context of general AIGC audio-video detection. 
+Through preliminary empirical analysis, we observe that general AIGC audio-videos contain a considerable proportion of weakly-associated or independently-generated audio-video pairs.
+
+Motivated by this observation, we propose a Decoupled Audio-Visual AIGC Detector (**DAV-Det**) that independently models forensic evidence from audio and visual modalities and performs decision-level integration instead of feature-level interaction.
+
+We design two independent detectors in DAV-Det:
 
 - **Audio Detector**: detects audio deepfakes using the PE-AV audio encoder with an AASIST-style backend.
 - **Video Detector**: detects visual deepfakes using DINOv3-ViT-L/16 with a GPS-DINO multi-granularity classifier.
 
 The final decision is obtained by fusing the predicted probabilities from both modalities.
 
+This technical report describes the methodology, network architecture, data augmentation strategies, and training details of DAV-Det.
+
 ---
 
 ## 2. Problem Formulation
-
-Given a video $v$, the goal is to predict its authenticity label $y \in \{0, 1\}$, where $y=1$ denotes fake and $y=0$ denotes real.
+Formally, given a video $v$, the goal is to predict its authenticity label $y \in \{0, 1\}$, where $y=1$ denotes fake and $y=0$ denotes real.
 
 The video can be decomposed into an audio stream $a$ and a visual stream $x = \{x_1, x_2, \dots, x_T\}$, where $x_i$ is the $i$-th sampled frame. We train two independent classifiers:
 
@@ -71,11 +78,11 @@ $$
 The encoder outputs:
 
 - `frame_features`: $H \in \mathbb{R}^{T' \times 1024}$
-- `pooler_output`: $\mathbf{h}_{\text{cls}} \in \mathbb{R}^{1024}$
+- `cls. token`: $\mathbf{h}_{\text{cls}} \in \mathbb{R}^{1024}$
 
 ### 3.3 AASIST-Style Backend
 
-The backend extracts two types of representations:
+Inspired by AASIST, we introduce an AASIST-style backend. The backend extracts two types of representations:
 
 - **Temporal Branch**: applies masked self-attention over time frames.
 - **Spectral Branch**: applies channel-wise attention over feature dimensions.
@@ -88,7 +95,7 @@ $$
 
 where $M$ is the attention mask derived from the padding mask.
 
-A master node $\mathbf{c} \in \mathbb{R}^{1024}$ interacts with both branches via cross-attention. The readout vector is formed by concatenating:
+Cls. token serves as a master node $\mathbf{c} \in \mathbb{R}^{1024}$ to interact with both branches via cross-attention. The readout vector is formed by concatenating:
 
 - the master node
 - temporal pooled / max / mean features
@@ -134,7 +141,7 @@ $$
 \mathcal{L}_{\text{focal}}(y, \hat{y}) = -\alpha y (1 - p)^{\gamma_{+}} \log(p) - (1 - \alpha)(1 - y) p^{\gamma_{-}} \log(1 - p)
 $$
 
-where $p = \sigma(\hat{y})$, $\alpha$ balances positive and negative samples, and $\gamma_{+}$, $\gamma_{-}$ control the down-weighting of easy examples.
+where $p = \sigma(\hat{y})$, $\alpha$ = 0.6 balances positive and negative samples, and $\gamma_{+}$, $\gamma_{-}$ = 2 control the down-weighting of easy examples.
 
 ### 3.7 Data Augmentation
 
@@ -324,7 +331,7 @@ $$
 \mathcal{L}_{\text{cls}} = \mathcal{L}_{\text{main}} + \mathcal{L}_{\text{global}} + \mathcal{L}_{\text{patch}} + \mathcal{L}_{\text{segment}} + \mathcal{L}_{\text{weak-patch}} + \mathcal{L}_{\text{weak-segment}}
 $$
 
-Each term uses either Focal Loss or Cross-Entropy depending on the configuration. Deep supervision extends these losses to layers 21, 22, and 23.
+Each term uses focal loss with $\alpha$=0.6, $\gamma$=2. Deep supervision extends these losses to layers 21, 22, and 23.
 
 #### 4.5.2 MIL Margin Regularization Loss
 
@@ -398,11 +405,11 @@ For each training sample, both a degraded view(img_size=384~768) and a weakly au
 | Optimizer | AdamW |
 | LoRA learning rate | $10^{-4}$ |
 | Head learning rate | $10^{-4}$ |
-| Batch size | 8 |
-| Clip length | 3s at 48kHz (144,000 samples) |
+| Batch size | 512 |
+| Clip length | training: 0-4s inference:3s |
 | LoRA rank $r$ | 32 |
 | LoRA alpha $\alpha$ | 64 |
-| Loss | Focal Loss |
+| Loss | Focal Loss with $\alpha$=0.6, $\gamma$=2 |
 | Scheduler | Warmup + Cosine decay |
 
 ### 5.2 Video Detector
@@ -412,10 +419,10 @@ For each training sample, both a degraded view(img_size=384~768) and a weakly au
 | Optimizer | AdamW |
 | Learning rate | $10^{-4}$ |
 | Batch size | 128 with 16 gradient accumulation steps |
-| Image size | training:512 inference:640 |
+| Image size | training:512x512 inference:640x640 |
 | LoRA rank $r$ | 32 |
 | LoRA alpha $\alpha$ | 16 |
-| Loss | Focal Loss|
+| Loss | Focal Loss with $\alpha$=0.6, $\gamma$=2|
 | Scheduler | Warmup + Cosine decay |
 
 ---

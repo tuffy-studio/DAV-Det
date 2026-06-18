@@ -6,7 +6,7 @@
 
 set -e
 
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 # Configuration
 SAVE_DIR="./weights"
@@ -17,13 +17,13 @@ DEV_AUDIO_DIR="x"
 PEAV_CHECKPOINT="./pe-av-base"
 
 # Training hyperparameters
-EPOCHS=10
-BATCH_SIZE=256
+EPOCHS=20
+BATCH_SIZE=512
 LR_HEAD=1e-4
 LR_LORA=1e-4
 WEIGHT_DECAY=5e-2
 GRAD_CLIP=1.0
-WARMUP_RATIO=0.0
+WARMUP_RATIO=0.1
 ACCUM_STEPS=1
 
 # Model config
@@ -48,10 +48,9 @@ AUX_LOSS_WEIGHT=0.5
 
 # Loss function
 LOSS_TYPE=focal
-FOCAL_ALPHA=0.5
+FOCAL_ALPHA=0.6
 FOCAL_GAMMA_POS=2.0
 FOCAL_GAMMA_NEG=2.0
-FOCAL_MU=0.01
 
 # Data augmentation
 AUGMENT=true
