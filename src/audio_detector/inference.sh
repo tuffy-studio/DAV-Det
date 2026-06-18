@@ -2,7 +2,7 @@
 # Inference script for CSV input
 export CUDA_VISIBLE_DEVICES=7
 # Configuration
-CHECKPOINT="./weights/audio_model.20.pth"
+CHECKPOINT="./weights/audio_model.20.pt"
 INPUT_CSV=""
 OUTPUT_CSV="audio_prob.csv"
 
