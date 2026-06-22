@@ -176,7 +176,7 @@ python src/audio_detector/train.py \
   --dev_csv ./dev_audio_labels.csv \
   --peav_checkpoint ./src/audio_detector/facebook/pe-av-base \
   --save_dir ./outputs/audio_detector \
-  --batch_size 8 \
+  --batch_size 512 \
   --epochs 20 \
   --lr_head 1e-4 \
   --lr_lora 1e-4 \
@@ -243,7 +243,7 @@ Key parameters:
 ```bash
 conda activate audio_detector_env
 python src/audio_detector/inference.py \
-  --checkpoint ./src/audio_detector/weights/best_model.pt \
+  --checkpoint ./src/audio_detector/weights/audio_model.20.pt \
   --input ./test_audio_files.csv \
   --output ./outputs/audio_prob.csv \
   --device cuda \
@@ -276,7 +276,7 @@ conda activate video_detector_env
 python src/video_detector/inference.py \
   --data_eval ./test_video_files.csv \
   --output_path ./outputs/video_prob.csv \
-  --pretrain_path ./src/video_detector/weights/model.19.pth \
+  --pretrain_path ./src/video_detector/weights/model.20.pth \
   --num_frames 16 \
   --frame_batch_size 64 \
   --video_batch_size 4 \
@@ -305,7 +305,7 @@ video_path,prob
 After obtaining audio and video fake probabilities, run the fusion script to generate final results:
 
 ```bash
-python make_2_and_4_result.py
+python ./evaluation/make_2_and_4_result.py
 ```
 
 Update `audio_csv` and `video_csv` paths in the script. Two output files will be generated:

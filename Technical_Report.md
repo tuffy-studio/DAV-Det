@@ -69,7 +69,7 @@ $$
 
 where $T' = T / 1920$ corresponds to a frame rate of 25 fps.
 
-The features are then projected to 1024 dimensions and processed by a 16-layer decoder-only Transformer:
+The features are then projected to 1024 dimensions and processed by a 16-layer Transformer:
 
 $$
 H = \text{Transformer}(Z W + b) \in \mathbb{R}^{T' \times 1024}
@@ -101,17 +101,16 @@ Cls. token serves as a master node $\mathbf{c} \in \mathbb{R}^{1024}$ to interac
 - temporal pooled / max / mean features
 - spectral pooled / max / mean features
 
-The readout vector is then fed into a classifier:
 
 $$
 \mathbf{r} = [\mathbf{c}; \mathbf{h}_{\text{temp}}^{\text{pool}}; \mathbf{h}_{\text{temp}}^{\text{max}}; \mathbf{h}_{\text{temp}}^{\text{mean}}; \mathbf{h}_{\text{spec}}^{\text{pool}}; \mathbf{h}_{\text{spec}}^{\text{max}}; \mathbf{h}_{\text{spec}}^{\text{mean}}]
 $$
 
-$$
-p_a = \sigma(W_2 \cdot \text{LayerNorm}(\text{SELU}(W_1 \mathbf{r} + b_1)) + b_2)
-$$
+The readout vector is then fed into a 2-layer classifier:
 
-where $\sigma(\cdot)$ is the sigmoid function.
+$$
+y = W_2 \cdot \text{LayerNorm}(\text{SELU}(W_1 \mathbf{r} + b_1)) + b_2
+$$
 
 ### 3.4 Deep Supervision
 
@@ -177,19 +176,19 @@ The video detector is built on DINOv3-ViT-L/16 as the backbone, followed by GPS-
 
 ### 4.2 DINOv3 Backbone
 
-Each sampled frame $x_i \in \mathbb{R}^{3 \times H \times W}$ is resized to $640 \times 640$ and patchified into tokens of size $16 \times 16$. The ViT-L/16 backbone extracts patch tokens, register tokens, and a CLS token from specified layers.
+Each sampled frame $x_i \in \mathbb{R}^{3 \times H \times W}$ is resized to $512 \times 512$ and patchified into tokens of size $16 \times 16$. The ViT-L/16 backbone extracts patch tokens, register tokens, and a CLS token from specified layers.
 
 ### 4.3 GPS-DINO Classifier
 
-GPS-DINO (Global-Patch-Segment DINO) is the core classification head built on top of DINOv3. It performs deepfake detection at three complementary granularities: global image-level, local patch-level, and semantic segment-level. Each granularity is supervised at multiple DINOv3 layers (21, 22, 23, 24) when deep supervision is enabled.
+GPS-DINO (Global-Patch-Segment DINO) is the core classification head built on top of DINOv3. It performs deepfake detection at three complementary granularities: global image-level, local patch-level, and semantic segment-level. Each granularity is supervised at multiple DINOv3 layers.
 
 #### 4.3.1 Multi-Layer Feature Extraction
 
-The DINOv3 backbone returns features from the layers specified by `layer_indices`. By default, the model extracts outputs from layers 21, 22, 23, and 24. Let $\ell \in \{21, 22, 23, 24\}$ denote a layer index. For a batch of $B$ images, the output at layer $\ell$ consists of:
+The DINOv3 backbone returns features from layers 21, 22, 23, and 24. Let $\ell \in \{21, 22, 23, 24\}$ denote a layer index. For a batch of $B$ images, the output at layer $\ell$ consists of:
 
 - CLS token: $\mathbf{c}^{(\ell)} \in \mathbb{R}^{B \times 1024}$
 - Register tokens (not used for classification)
-- Patch tokens: $\mathbf{P}^{(\ell)} \in \mathbb{R}^{B \times N \times 1024}$, where $N=1024$ for ViT-L/16 at $640 \times 640$ resolution
+- Patch tokens: $\mathbf{P}^{(\ell)} \in \mathbb{R}^{B \times N \times 1024}$, where $N$ is the number of patch tokens.
 
 During inference, only the last layer (24) is used.
 
@@ -449,9 +448,9 @@ The four-class probabilities are:
 
 | Class | Meaning | Probability |
 |---|---|---|
-| 0 (RR) | Real audio + Real video | $(1-p_a)(1-p_v)$ |
-| 1 (FF) | Fake audio + Fake video | $p_a p_v$ |
-| 2 (FR) | Fake audio + Real video | $p_a(1-p_v)$ |
-| 3 (RF) | Real audio + Fake video | $(1-p_a)p_v$ |
+| 0 (RR) | Real video + Real audio | $(1-p_v)(1-p_a)$ |
+| 1 (FF) | Fake video + Fake audio | $p_v p_a$ |
+| 2 (FR) | Fake video + Real audio | $p_v(1-p_a)$ |
+| 3 (RF) | Real video + Fake audio | $(1-p_v)p_a$ |
 
 ---

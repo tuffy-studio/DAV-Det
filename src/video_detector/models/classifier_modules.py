@@ -169,29 +169,6 @@ class Patch_Classifier_Reducer(nn.Module):
         self.temperature = temperature
         self.topk_ratio = topk_ratio
         self.norm = nn.LayerNorm(input_dim)
-    
-    def mask2patch(self, mask, patch_size=16, threshold=0.5):
-        """
-        mask: [B, H, W] (0/1)
-        return: [B, N] (0/1 hard patch label)
-        """
-        B, H, W = mask.shape
-        assert H % patch_size == 0 and W % patch_size == 0
-
-        mask = mask.float().unsqueeze(1)  # [B,1,H,W]
-
-        patch_mask = F.avg_pool2d(
-            mask,
-            kernel_size=patch_size,
-            stride=patch_size
-        )  # [B,1,H/P,W/P]
-
-        patch_mask = patch_mask.squeeze(1).flatten(1)  # [B,N]
-
-        # HARD binarization
-        patch_label = (patch_mask > threshold).float() # [B,N] 0/1 hard label
-
-        return patch_label
 
     def forward(self, x, MIL_learning=False, reduction='mean', return_instance_logits=False, gt_mask=None, threshold=0.1):
         x = self.norm(x)
@@ -217,17 +194,6 @@ class Patch_Classifier_Reducer(nn.Module):
         else:
             raise ValueError(f"Unsupported reduction method: {reduction}")
 
-        if gt_mask is not None:
-            patch_label = self.mask2patch(gt_mask, threshold=threshold)  # [B, N]
-            mask_loss = sigmoid_focal_loss(
-                patch_logits.squeeze(-1),
-                patch_label,
-                alpha=0.9,
-                reduction="mean"
-            ) # [B]
-
-            return aggregated, topk_logit, res_logit, patch_logits.squeeze(-1), mask_loss
-
 
         if MIL_learning:
             if return_instance_logits:
@@ -252,71 +218,6 @@ class Segment_Classifier_Reducer(nn.Module):
         self.norm = nn.LayerNorm(input_dim)
 
 
-    def mask2patch(self, mask, patch_size=16, threshold=0.5):
-        """
-        mask: [B, H, W] (0/1)
-        return: [B, N] (0/1 hard patch label)
-        """
-        B, H, W = mask.shape
-        assert H % patch_size == 0 and W % patch_size == 0
-
-        mask = mask.float().unsqueeze(1)  # [B,1,H,W]
-
-        patch_mask = F.avg_pool2d(
-            mask,
-            kernel_size=patch_size,
-            stride=patch_size
-        )  # [B,1,H/P,W/P]
-
-        patch_mask = patch_mask.squeeze(1).flatten(1)  # [B,N]
-
-        # HARD binarization
-        patch_label = (patch_mask > threshold).float() # [B,N] 0/1 hard label
-
-        return patch_label
-
-    def mask2segment(self, gt_mask, cluster_labels, patch_size=16, threshold=0.5):
-        """
-        gt_mask: [1, H, W]
-        cluster_labels: [N]
-        return: [1, number of segments] 0/1 hard label
-        """
-
-        device = gt_mask.device
-
-        # =========================
-        # 1. GT → patch label
-        # =========================
-        patch_label = self.mask2patch(
-            gt_mask,
-            patch_size=patch_size,
-            threshold=threshold
-        )  # [1, N]
-
-        patch_label = patch_label.squeeze(0)  # [N]
-
-        labels = cluster_labels  # [N]
-
-        K = labels.max().item() + 1 # number of segments
-
-        segment_labels = []
-
-        # =========================
-        # 2. aggregate per segment
-        # =========================
-        for k in range(K):
-
-            idx = (labels == k)
-
-            if idx.sum() > 0:
-                seg_label = (patch_label[idx].float().mean() > threshold).float()
-            else:
-                seg_label = torch.tensor(0.0, device=device)
-
-            segment_labels.append(seg_label)
-
-        return torch.stack(segment_labels, dim=0).unsqueeze(0)  # [1, number of segments]
-
     def forward(self, x, MIL_learning=False, reduction='mean', return_instance_logits=False, gt_mask=None, threshold=0.1, cluster_labels=None):
         x = self.norm(x)
         segment_logits = self.mlp(x)  # [1, nums_segment, 1]
@@ -340,18 +241,6 @@ class Segment_Classifier_Reducer(nn.Module):
             topk_logit = topk_vals.mean(dim=1)  # [1]
         else:
             raise ValueError(f"Unsupported reduction method: {reduction}")
-
-        if gt_mask is not None:
-            segment_label = self.mask2segment(gt_mask, cluster_labels=cluster_labels, threshold=threshold)  # [1, nums_segment] 0/1 hard label
-            mask_loss = sigmoid_focal_loss(
-                segment_logits.squeeze(-1),
-                segment_label,
-                alpha=0.9,
-                reduction="mean"
-            ) # [1]
-
-            return aggregated, topk_logit, res_logit, segment_logits.squeeze(-1), mask_loss
-
 
         if MIL_learning:
             if return_instance_logits:
