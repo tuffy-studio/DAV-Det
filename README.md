@@ -15,13 +15,19 @@
     <img src="https://img.shields.io/badge/arXiv-tbd-b31b1b.svg?logo=arXiv">
   </a>
   &nbsp;&nbsp;&nbsp;
-  <a href="https://huggingface.co/JielunPeng/DAVDet/">
+  <a href="https://huggingface.co/JielunPeng/DAV-Det/">
     <img src="https://img.shields.io/badge/🤗%20Hugging%20Face-DAVDet-ffd21e">
   </a>
 </p>
 
+## News
 
-# Overview
+- **[June 2026]** Our method ranked 1st in the [General AIGC Audio-Video Detection challenge](https://www.codabench.org/competitions/15769/#/pages-tab).
+- **[June 2025]** The training and inference code is released.
+- **[June 2026]** Model weights are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
+<!-- - **[July 2026]** Our solution paper is available on arXiv: [https://arxiv.org/abs/2603.23960](https://arxiv.org/abs/2603.23960). -->
+
+## Overview
 
 This repository contains the official implementation of "Less is More: Modality-Decoupling for General AIGC Audio-Video Detection", which is also the solution of our team (HIT VIRLAB) for the [General AIGC Audio-Video Detection challenge](https://www.codabench.org/competitions/15769/#/pages-tab) at IJCAI 2026 DDL 2.0 workshop. Our method achieved **1st** place among 101 participating teams in the final test phase.
 
@@ -30,12 +36,9 @@ This repository contains the official implementation of "Less is More: Modality-
 
 It implements a **Decoupled Audio-Visual AIGC detection system**:
 
-- **Audio Detector**: based on the PE-AV audio encoder + AASIST-style backend to classify audio as real or fake.
-- **Video Detector**: based on the DINOv3-ViT-L/16 image encoder + GPS-DINO multi-granularity classifier to classify video as real or fake.
-- **Fusion Post-processing**: combines audio and video probability predictions to produce both binary (real/fake) and four-class (RR / FF / FR / RF) outputs.
-
-Detector Model Weights will be available at Hugging Face.
-<!-- Detector Model Weights are available at: https://drive.google.com/drive/u/0/folders/1jClj7dZTBDAiyLefIwwxldNHOibhHUBF -->
+- **Audio Detector** exploits both temporal and spectral irregularities via a gated temporal-spectral dual-branch architecture to model acoustic artifacts. 
+- **Video Detector** leverages multi-granularity representations at global, patch, and segment levels to capture spatial forgery cues to classify video as real or fake. 
+- **Decision-Level Fusion for Inference**: During inference, the two detectors operate independently and their predictions are fused to enable both binary (real/fake) and four-class (RR / FF / FR / RF)  classification.
 
 
 <!-- ## Directory Structure
@@ -67,11 +70,13 @@ DAV-Det/
 
 --- -->
 
-## Environment Setup
+## 1 Independence
+
+### 1.1 Environment Setup
 
 We recommend using separate Conda environments for the audio and video detectors to avoid dependency conflicts.
 
-### Audio Detector Environment
+#### Audio Detector Environment
 
 ```bash
 conda create -n audio_detector_env python=3.11.14
@@ -79,7 +84,7 @@ conda activate audio_detector_env
 pip install -r src/audio_detector/audio_requirements.txt
 ```
 
-### Video Detector Environment
+#### Video Detector Environment
 
 ```bash
 conda create -n video_detector_env python=3.10.20
@@ -87,9 +92,22 @@ conda activate video_detector_env
 pip install -r src/video_detector/video_requirements.txt
 ```
 
----
+### 1.2 Download Pretrained Models Weights and Configures
 
-## Data Preprocessing
+#### Audio Detector Configure
+
+| Model | Source | Placement |
+|---|---|---|
+| PE-AV Base | [huggingface.co/facebook/pe-av-base](https://huggingface.co/facebook/pe-av-base) | `./src/audio_detector/` |
+
+#### Video Detector Configure
+
+| Model | Source | Placement |
+|---|---|---|
+| DINOv3 ViT-L/16 | [ModelScope - dinov3-vitl16-pretrain-lvd1689m](https://www.modelscope.cn/models/facebook/dinov3-vitl16-pretrain-lvd1689m) | `./src/video_detector/` |
+
+
+## 2 Data Preprocessing
 
 ### 1. Video Directory Structure
 
@@ -163,36 +181,41 @@ Processing logic:
 
 ---
 
-## Pretrained Models Download
+## 3 Training
 
-### Audio Detector Configure
+### 3.1 Video Detector Training
 
-| Model | Source | Placement |
-|---|---|---|
-| PE-AV Base | [huggingface.co/facebook/pe-av-base](https://huggingface.co/facebook/pe-av-base) | `./src/audio_detector/` |
+```bash
+conda activate video_detector_env
+torchrun --nproc_per_node=8 src/video_detector/run_training.py \
+  --data_train ./train_frame_labels.csv \
+  --batch_size 128 \
+  --accumulation_steps 16 \
+  --gpu_num 8 \
+  --lr 1e-4 \
+  --n_epochs 20 \
+  --warmup_epochs 2 \
+  --cls_loss focal \
+  --save_dir ./outputs/video_detector
+```
 
-### Video Detector Configure
+Key parameters:
 
-| Model | Source | Placement |
-|---|---|---|
-| DINOv3 ViT-L/16 | [ModelScope - dinov3-vitl16-pretrain-lvd1689m](https://www.modelscope.cn/models/facebook/dinov3-vitl16-pretrain-lvd1689m) | `./src/video_detector/` or specify `--backbone_name` |
+| Parameter | Description |
+|---|---|
+| `--data_train` | Training CSV (`image_path,label`) |
+| `--batch_size` | Total batch size |
+| `--accumulation_steps` | Gradient accumulation steps |
+| `--gpu_num` | Number of GPUs |
+| `--lr` | LoRA learning rate |
+| `--head_lr_ratio` | Classifier head LR ratio relative to LoRA |
+| `--token_head_lr_ratio` | Token Reducer LR ratio relative to LoRA |
+| `--cls_loss` | `focal` or `ce` |
+| `--pretrain_path` | Load pretrained/checkpoint weights |
 
-### AIGC Detection Model Weights
+> Note: `src/video_detector/training.py` currently depends on `stats_calculation.calculate_stats` and `loss_fn.mil_margin_loss`. If these modules are not provided in the repository, please implement them before running training.
 
-Competition/project final detection weights can be downloaded from:
-
-- [Google Drive - DAV-Det Weights](https://drive.google.com/drive/folders/1jClj7dZTBDAiyLefIwwxldNHOibhHUBF?usp=sharing)
-
-After downloading, place the weights in:
-
-- Audio weights: `./src/audio_detector/weights/`
-- Video weights: `./src/video_detector/weights/`
-
----
-
-## Training
-
-### Audio Detector Training
+### 3.2 Audio Detector Training
 
 ```bash
 conda activate audio_detector_env
@@ -227,41 +250,19 @@ Key parameters:
 
 For more parameters, see `python src/audio_detector/train.py --help`.
 
-### Video Detector Training
-
-```bash
-conda activate video_detector_env
-torchrun --nproc_per_node=8 src/video_detector/run_training.py \
-  --data_train ./train_frame_labels.csv \
-  --batch_size 128 \
-  --accumulation_steps 16 \
-  --gpu_num 8 \
-  --lr 1e-4 \
-  --n_epochs 20 \
-  --warmup_epochs 2 \
-  --cls_loss focal \
-  --save_dir ./outputs/video_detector
-```
-
-Key parameters:
-
-| Parameter | Description |
-|---|---|
-| `--data_train` | Training CSV (`image_path,label`) |
-| `--batch_size` | Total batch size |
-| `--accumulation_steps` | Gradient accumulation steps |
-| `--gpu_num` | Number of GPUs |
-| `--lr` | LoRA learning rate |
-| `--head_lr_ratio` | Classifier head LR ratio relative to LoRA |
-| `--token_head_lr_ratio` | Token Reducer LR ratio relative to LoRA |
-| `--cls_loss` | `focal` or `ce` |
-| `--pretrain_path` | Load pretrained/checkpoint weights |
-
-> Note: `src/video_detector/training.py` currently depends on `stats_calculation.calculate_stats` and `loss_fn.mil_margin_loss`. If these modules are not provided in the repository, please implement them before running training.
-
----
 
 ## Inference
+
+### AIGC Detection Model Weights
+
+Competition/project final detection weights can be downloaded from:
+
+- [Google Drive - DAV-Det Weights](https://drive.google.com/drive/folders/1jClj7dZTBDAiyLefIwwxldNHOibhHUBF?usp=sharing)
+
+After downloading, place the weights in:
+
+- Audio weights: `./src/audio_detector/weights/`
+- Video weights: `./src/video_detector/weights/`
 
 ### Audio Detector Inference
 
