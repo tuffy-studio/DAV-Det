@@ -1,6 +1,31 @@
+<div align="center">
+  <h2><b> Less is More: Modality-Decoupling for General AIGC Audio-Video Detection </b></h2>
+</div>
+
+<div align="center">
+
+</div>
+
+<p align="center">
+    <a href="https://github.com/tuffy-studio/DAV-Det">
+    <img src="https://img.shields.io/badge/Github-DAVDet-black?logo=github">
+  </a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://arxiv.org/abs/tbd">
+    <img src="https://img.shields.io/badge/arXiv-tbd-b31b1b.svg?logo=arXiv">
+  </a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://huggingface.co/JielunPeng/DAVDet/">
+    <img src="https://img.shields.io/badge/🤗%20Hugging%20Face-DAVDet-ffd21e">
+  </a>
+</p>
+
+
 # Overview
 
-This repository contains the solution of our team (HIT VIRLAB) for the General AIGC Audio-Video Detection (track 2) at IJCAI-ECAI 2026 DDL 2.0 workshop. 
+This repository contains the solution of our team (HIT VIRLAB) for the [General AIGC Audio-Video Detection challenge](https://www.codabench.org/competitions/15769/#/pages-tab) at IJCAI-ECAI 2026 DDL 2.0 workshop. Our method ranked **1st** out of 101 participants in the final test phase.
+
+![alt text](assets/framework.png)
 
 
 It implements a **Decoupled Audio-Visual AIGC detection system**:
@@ -9,11 +34,11 @@ It implements a **Decoupled Audio-Visual AIGC detection system**:
 - **Video Detector**: based on the DINOv3-ViT-L/16 image encoder + GPS-DINO multi-granularity classifier to classify video as real or fake.
 - **Fusion Post-processing**: combines audio and video probability predictions to produce both binary (real/fake) and four-class (RR / FF / FR / RF) outputs.
 
-Detector Model Weights are available at: https://drive.google.com/drive/u/0/folders/1jClj7dZTBDAiyLefIwwxldNHOibhHUBF
+Detector Model Weights will be available at Hugging Face.
+<!-- Detector Model Weights are available at: https://drive.google.com/drive/u/0/folders/1jClj7dZTBDAiyLefIwwxldNHOibhHUBF -->
 
----
 
-## Directory Structure
+<!-- ## Directory Structure
 
 ```
 DAV-Det/
@@ -40,7 +65,7 @@ DAV-Det/
 └── Technical_Report.md          # Technical report (methodology, architecture, etc.)
 ```
 
----
+--- -->
 
 ## Environment Setup
 

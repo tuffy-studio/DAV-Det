@@ -23,7 +23,7 @@ from loss_function import sigmoid_focal_loss
 # Add project path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'models'))
 
-from simple_detector import build_detector_aasist
+from audio_deepfake_detector import build_detector_aasist
 from dataloader import get_dataloader
 
 

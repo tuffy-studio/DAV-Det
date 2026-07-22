@@ -51,7 +51,7 @@ if not hasattr(np, '_core'):
     sys.modules['numpy._core.multiarray'] = np.core.multiarray
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'models'))
-from simple_detector import build_detector, build_detector_aasist
+from audio_deepfake_detector import build_detector_aasist
 
 
 CLIP_LENGTH = 48000 * 3   # 3s @ 48kHz
