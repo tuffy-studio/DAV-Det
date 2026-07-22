@@ -6,7 +6,7 @@
 
 </div>
 
-<p align="center">
+<!-- <p align="center">
     <a href="https://github.com/tuffy-studio/DAV-Det">
     <img src="https://img.shields.io/badge/Github-DAVDet-black?logo=github">
   </a>
@@ -18,13 +18,13 @@
   <a href="https://huggingface.co/JielunPeng/DAV-Det/">
     <img src="https://img.shields.io/badge/🤗%20Hugging%20Face-DAVDet-ffd21e">
   </a>
-</p>
+</p> -->
 
 ## News
 
 - **[June 2026]** Our method ranked 1st in the [General AIGC Audio-Video Detection challenge](https://www.codabench.org/competitions/15769/#/pages-tab).
-- **[June 2025]** The training and inference code is released.
-- **[June 2026]** Model weights are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
+- **[June 2026]** The training and inference code is released.
+- **[June 2026]** Model weights of DAV-Det are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
 <!-- - **[July 2026]** Our solution paper is available on arXiv: [https://arxiv.org/abs/2603.23960](https://arxiv.org/abs/2603.23960). -->
 
 ## Overview
