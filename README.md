@@ -6,7 +6,7 @@
 
 </div>
 
-<!-- <p align="center">
+<p align="center">
     <a href="https://github.com/tuffy-studio/DAV-Det">
     <img src="https://img.shields.io/badge/Github-DAVDet-black?logo=github">
   </a>
@@ -18,7 +18,7 @@
   <a href="https://huggingface.co/JielunPeng/DAV-Det/">
     <img src="https://img.shields.io/badge/🤗%20Hugging%20Face-DAVDet-ffd21e">
   </a>
-</p> -->
+</p>
 
 ## News
 
