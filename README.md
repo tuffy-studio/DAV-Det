@@ -23,7 +23,7 @@
 
 # Overview
 
-This repository contains the solution of our team (HIT VIRLAB) for the [General AIGC Audio-Video Detection challenge](https://www.codabench.org/competitions/15769/#/pages-tab) at IJCAI-ECAI 2026 DDL 2.0 workshop. Our method ranked **1st** out of 101 participants in the final test phase.
+This repository contains the official implementation of "Less is More: Modality-Decoupling for General AIGC Audio-Video Detection", which is also the solution of our team (HIT VIRLAB) for the [General AIGC Audio-Video Detection challenge](https://www.codabench.org/competitions/15769/#/pages-tab) at IJCAI 2026 DDL 2.0 workshop. Our method achieved **1st** place among 101 participating teams in the final test phase.
 
 ![alt text](assets/framework.png)
 
