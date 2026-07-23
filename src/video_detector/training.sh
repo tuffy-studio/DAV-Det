@@ -31,8 +31,8 @@ mkdir -p ${save_dir}/models
 lr=1e-4
 head_lr_ratio=1
 token_head_lr_ratio=1
-n_epochs=10
-warmup_epochs=0
+n_epochs=20
+warmup_epochs=2
 scheduler_step_mode="batch"
 batch_size=112
 accumulation_steps=16
