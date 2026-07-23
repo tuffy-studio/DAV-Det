@@ -99,29 +99,6 @@ class TokenWise_TokenReducer(nn.Module):
         self.temperature = temperature
         self.topk_ratio = topk_ratio
         self.norm = nn.LayerNorm(input_dim)
-    
-    def mask2patch(self, mask, patch_size=16, threshold=0.5):
-        """
-        mask: [B, H, W] (0/1)
-        return: [B, N] (0/1 hard patch label)
-        """
-        B, H, W = mask.shape
-        assert H % patch_size == 0 and W % patch_size == 0
-
-        mask = mask.float().unsqueeze(1)  # [B,1,H,W]
-
-        patch_mask = F.avg_pool2d(
-            mask,
-            kernel_size=patch_size,
-            stride=patch_size
-        )  # [B,1,H/P,W/P]
-
-        patch_mask = patch_mask.squeeze(1).flatten(1)  # [B,N]
-
-        # HARD binarization
-        patch_label = (patch_mask > threshold).float() # [B,N] 0/1 hard label
-
-        return patch_label
 
     def forward(self, x, MIL_learning=False, reduction='mean', return_instance_logits=False):
         x = self.norm(x)
@@ -170,7 +147,7 @@ class Patch_Classifier_Reducer(nn.Module):
         self.topk_ratio = topk_ratio
         self.norm = nn.LayerNorm(input_dim)
 
-    def forward(self, x, MIL_learning=False, reduction='mean', return_instance_logits=False, gt_mask=None, threshold=0.1):
+    def forward(self, x, MIL_learning=False, reduction='mean', return_instance_logits=False):
         x = self.norm(x)
         patch_logits = self.mlp(x)  # [B, N, 1]
         patch_logits = torch.clamp(patch_logits, min=-10, max=10)
@@ -218,7 +195,7 @@ class Segment_Classifier_Reducer(nn.Module):
         self.norm = nn.LayerNorm(input_dim)
 
 
-    def forward(self, x, MIL_learning=False, reduction='mean', return_instance_logits=False, gt_mask=None, threshold=0.1, cluster_labels=None):
+    def forward(self, x, MIL_learning=False, reduction='mean', return_instance_logits=False):
         x = self.norm(x)
         segment_logits = self.mlp(x)  # [1, nums_segment, 1]
         segment_logits = torch.clamp(segment_logits, min=-10, max=10)
@@ -249,83 +226,6 @@ class Segment_Classifier_Reducer(nn.Module):
                 return aggregated, topk_logit, res_logit
         else:   
             return aggregated
-
-
-# class TokenWise_TokenReducer(nn.Module):
-#     """
-#     基于 Top-K 机制的 Token 缩减与聚合模块
-#     功能：
-#     1. 计算每个 Token 的重要性分数 (Logits)
-#     2. 仅保留分数最高的 Top-K 个 Token 参与特征聚合
-#     3. 支持 MIL (多实例学习) 的辅助输出 (Top-K 均值 vs 剩余均值)
-#     """
-#     def __init__(self, input_dim=768, hidden_dim=128, temperature=0.07, topk_ratio=0.05):
-#         super().__init__()
-#         self.mlp = nn.Sequential(
-#             nn.Linear(input_dim, hidden_dim),
-#             nn.Dropout(0.1),
-#             nn.ReLU(),
-#             nn.Linear(hidden_dim, 1)
-#         )
-#         self.temperature = temperature
-#         self.topk_ratio = topk_ratio
-#         self.norm = nn.LayerNorm(input_dim)
-
-#     def forward(self, x, MIL_learning=False, reduction='mean', return_instance_logits=False):
-#         """
-#         x: [B, N, D] (Batch_size, Token_num, Dimension)
-#         """
-#         # 1. 特征归一化与重要性评分
-#         x_norm = self.norm(x)
-#         logits = self.mlp(x_norm).squeeze(-1)  # [B, N]
-        
-#         # 数值稳定性处理：防止 Softmax 爆炸
-#         logits = torch.clamp(logits, min=-10, max=10)
-        
-#         B, N = logits.shape
-#         k = max(1, int(self.topk_ratio * N))
-
-#         # 2. 获取 Top-K 索引
-#         topk_vals, topk_idx = torch.topk(logits, k, dim=1)  # [B, k]
-
-#         # 3. 核心修改：仅针对 Top-K 进行 Softmax 聚合
-#         # 创建一个全负无穷的掩码，只有 Top-K 的位置设为 0
-#         mask = torch.full_like(logits, float('-inf'))
-#         mask.scatter_(1, topk_idx, 0.0)
-        
-#         # 加上掩码后做 Softmax，非 Top-K 区域权重将严格为 0
-#         # (logits + mask) 让非 topk 位置变为 -inf，softmax(-inf) = 0
-#         topk_weights = F.softmax((logits + mask) / self.temperature, dim=-1) # [B, N]
-        
-#         # 聚合特征：[B, 1, N] @ [B, N, D] -> [B, 1, D] -> [B, D]
-#         aggregated = torch.bmm(topk_weights.unsqueeze(1), x).squeeze(1)
-
-#         # 4. MIL 逻辑处理
-#         if not MIL_learning:
-#             return aggregated
-
-#         # 计算剩余 (Rest) Token 的平均得分
-#         # 创建反向掩码：Top-K 为 0, 其他为 1
-#         rest_mask = torch.ones_like(logits)
-#         rest_mask.scatter_(1, topk_idx, 0.0)
-        
-#         # 避免除以 0
-#         num_rest = N - k if N > k else 1
-#         res_logit = (logits * rest_mask).sum(dim=1) / num_rest
-
-#         # 计算 Top-K 的聚合得分
-#         if reduction == 'mean':
-#             topk_logit = topk_vals.mean(dim=1)
-#         elif reduction == 'logsumexp':
-#             topk_logit = torch.logsumexp(logits + mask, dim=1) # 同样只考虑 Top-K
-#         else:
-#             raise ValueError(f"Unsupported reduction method: {reduction}")
-
-#         # 5. 返回结果
-#         if return_instance_logits:
-#             return aggregated, topk_logit, res_logit, logits
-        
-#         return aggregated, topk_logit, res_logit
 
 def vit_patch_clustering(
     patch_tokens: torch.Tensor,
@@ -389,83 +289,3 @@ def vit_patch_clustering(
     protos = torch.cat(protos, dim=0)
 
     return labels, protos
-
-
-def visualize_clusters(labels, img_size=512, patch_size=16):
-    import matplotlib.pyplot as plt
-    import numpy as np
-    """
-    labels: (1024,)  for ViT-L/16 on 512x512 → 32x32 patches
-    """
-
-    grid_size = img_size // patch_size  # 32
-
-    label_map = labels.cpu().numpy().reshape(grid_size, grid_size)
-
-    plt.figure(figsize=(6, 6))
-    plt.imshow(label_map, cmap="tab20")  # 或 "jet"
-    plt.title("Agglomerative Clustering on ViT Patches")
-    plt.colorbar()
-    plt.axis("off")
-    plt.savefig("cluster_labels.png")
-    plt.show()
-
-def overlay_on_image(img_tensor, labels, img_size=512, patch_size=16, alpha=0.6):
-    """
-    img_tensor: (1,3,H,W)
-    """
-
-    import torch
-    import matplotlib.pyplot as plt
-
-    img = img_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    img = (img - img.min()) / (img.max() - img.min() + 1e-6)
-
-    grid_size = img_size // patch_size
-    label_map = labels.cpu().numpy().reshape(grid_size, grid_size)
-
-    # 上采样 label map 到 image size
-    label_map = torch.tensor(label_map)[None, None].float()
-    label_map = torch.nn.functional.interpolate(
-        label_map,
-        size=(img_size, img_size),
-        mode="nearest"
-    )[0, 0].numpy()
-
-    plt.figure(figsize=(6, 6))
-    plt.imshow(img)
-    plt.imshow(label_map, cmap="tab20", alpha=alpha)
-    plt.title("Cluster Overlay on Image")
-    plt.axis("off")
-    plt.savefig("cluster_overlay.png")
-    plt.show()
-
-if __name__ == "__main__":
-    # 测试代码
-    from dinov3 import DINOv3Model
-
-    model = DINOv3Model(backbone_name="/data/data2/jielun/XPlainVerse/MM_2026_method/HiDINO/dinov3-vitl16-pretrain-lvd1689m/", layer_indices=[24])
-
-    img_path = "/home/home/jielun/DDL/track1/train/real/8d2b8acbd7dab8ec39caa039442b244d.png"
-    from PIL import Image
-    img = Image.open(img_path).convert("RGB")
-    from torchvision.transforms import functional as TF
-    img = TF.resize(img, (640, 640))
-    img = TF.to_tensor(img)
-
-    import torchvision.transforms as T
-    normalize = T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-
-    img = normalize(img)
-    img = img.unsqueeze(0)  # (1, 3, 512, 512)
-
-    patch_tokens = model(img)[2][0].squeeze(0)  # (1, 1024, 1024) -> (1024, 1024)
-    print("Patch tokens shape:", patch_tokens.shape)
-
-    labels, protos = vit_patch_clustering(patch_tokens, tau=0.9)
-    print("Cluster labels shape:", labels.shape)  # (1024,)
-    print("Prototypes shape:", protos.shape)      # (K, 768)
-
-    visualize_clusters(labels)
-
-    overlay_on_image(img, labels)

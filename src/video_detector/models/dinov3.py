@@ -194,7 +194,6 @@ class DINOv3Model_LORA(nn.Module):
         self,
         backbone_name,
         layer_indices=None,
-        num_last_layers=4,
         use_lora=True,
         lora_r=32,
         lora_alpha=64,
@@ -202,6 +201,9 @@ class DINOv3Model_LORA(nn.Module):
         unfreeze_norm=False,
     ):
         super().__init__()
+
+        if not layer_indices:
+            raise ValueError("layer_indices must be a non-empty list of layer indices")
 
         self.backbone = AutoModel.from_pretrained(backbone_name)
         for p in self.backbone.parameters(): 
@@ -236,10 +238,7 @@ class DINOv3Model_LORA(nn.Module):
         N = len(encoder_layers)
         print(f"Backbone has {N} layers.")
 
-        if layer_indices is not None:
-            self.layer_indices = layer_indices
-        else:
-            self.layer_indices = list(range(N - num_last_layers, N))
+        self.layer_indices = layer_indices
 
     def forward(self, x, use_lora=True):
         for module in self.modules():

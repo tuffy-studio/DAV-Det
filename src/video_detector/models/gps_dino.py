@@ -5,19 +5,18 @@ from .dinov3 import DINOv3Model_LORA
 
 
 class GPS_DINO(nn.Module):
-    def __init__(self, backbone_name, layer_indices=[24], num_last_layers=4, use_lora=True, lora_r=32, lora_alpha=16, lora_dropout=0.1, use_deep_supervision=True, unfreeze_norm=True):
+    def __init__(self, backbone_name, layer_indices, use_lora=True, lora_r=32, lora_alpha=16, lora_dropout=0.1, use_deep_supervision=False, unfreeze_norm=True):
         super(GPS_DINO, self).__init__()
 
         self.use_deep_supervision = use_deep_supervision
         if self.use_deep_supervision:
-            self.layer_indices = [21,22,23,24]
-        else:
             self.layer_indices = layer_indices
+        else:
+            self.layer_indices = [24]
 
         self.dinov3 = DINOv3Model_LORA(
             backbone_name=backbone_name,
             layer_indices=self.layer_indices,
-            num_last_layers=num_last_layers,
             use_lora=use_lora,
             lora_r=lora_r,
             lora_alpha=lora_alpha,
@@ -81,8 +80,6 @@ class GPS_DINO(nn.Module):
             self.norm_segment_22 = nn.LayerNorm(1024)
             self.norm_segment_23 = nn.LayerNorm(1024)
 
-        
-
     def layerwise_segment(self, patch_tokens, cluster_labels):
 
         K = cluster_labels.max().item() + 1
@@ -101,7 +98,7 @@ class GPS_DINO(nn.Module):
 
         return protos
 
-    def forward(self, x, mask=None, visualize=False, is_training=True, if_return_feature=False):
+    def forward(self, x, is_training=True):
 
         # cls token (shape: [B, 1, 1024]), register token (shape: [B, 1, 1024]), patch token (shape: [B, 1, 1024, 1024])
         cls_tokens, register_tokens, patch_tokens = self.dinov3(x, use_lora=True) 
@@ -131,11 +128,11 @@ class GPS_DINO(nn.Module):
             patch_tokens_24 = patch_tokens[:,-1]  # shape: [B, 1024, 1024]
 
 
-        aggregated_patch_tokens_24, weak_patch_logits_24, rest_patch_logits_24, patch_logits = self.patch_classifier_reducer(patch_tokens_24, MIL_learning=True, reduction='mean', return_instance_logits=True, gt_mask = mask)  # shape: [B, 1024], [B]
+        aggregated_patch_tokens_24, weak_patch_logits_24, rest_patch_logits_24, patch_logits = self.patch_classifier_reducer(patch_tokens_24, MIL_learning=True, reduction='mean', return_instance_logits=True)  # shape: [B, 1024], [B]
         if self.use_deep_supervision:
-            aggregated_patch_tokens_21, weak_patch_logits_21, rest_patch_logits_21, patch_logits_21 = self.patch_classifier_reducer_21(patch_tokens_21, MIL_learning=True, reduction='mean', return_instance_logits=True, gt_mask = mask)  # shape: [B, 1024], [B]
-            aggregated_patch_tokens_22, weak_patch_logits_22, rest_patch_logits_22, patch_logits_22 = self.patch_classifier_reducer_22(patch_tokens_22, MIL_learning=True, reduction='mean', return_instance_logits=True, gt_mask = mask)  # shape: [B, 1024], [B]
-            aggregated_patch_tokens_23, weak_patch_logits_23, rest_patch_logits_23, patch_logits_23 = self.patch_classifier_reducer_23(patch_tokens_23, MIL_learning=True, reduction='mean', return_instance_logits=True, gt_mask = mask)  # shape: [B, 1024], [B]    
+            aggregated_patch_tokens_21, weak_patch_logits_21, rest_patch_logits_21, patch_logits_21 = self.patch_classifier_reducer_21(patch_tokens_21, MIL_learning=True, reduction='mean', return_instance_logits=True)  # shape: [B, 1024], [B]
+            aggregated_patch_tokens_22, weak_patch_logits_22, rest_patch_logits_22, patch_logits_22 = self.patch_classifier_reducer_22(patch_tokens_22, MIL_learning=True, reduction='mean', return_instance_logits=True)  # shape: [B, 1024], [B]
+            aggregated_patch_tokens_23, weak_patch_logits_23, rest_patch_logits_23, patch_logits_23 = self.patch_classifier_reducer_23(patch_tokens_23, MIL_learning=True, reduction='mean', return_instance_logits=True)  # shape: [B, 1024], [B]    
 
         patch_logits_24 = self.patch_classifier(self.norm_patch(aggregated_patch_tokens_24)) # shape: [B, 1]
         if self.use_deep_supervision:
@@ -151,11 +148,11 @@ class GPS_DINO(nn.Module):
 
         B, N, D = patch_tokens_24.shape
 
-        aggregated_segment_tokens_24, weak_segment_logits_24, rest_segment_logits_24, segment_mask_losses_24 = [], [], [], []
+        aggregated_segment_tokens_24, weak_segment_logits_24, rest_segment_logits_24 = [], [], []
         if self.use_deep_supervision:
-            aggregated_segment_tokens_21, weak_segment_logits_21, rest_segment_logits_21, segment_mask_losses_21 = [], [], [], []
-            aggregated_segment_tokens_22, weak_segment_logits_22, rest_segment_logits_22, segment_mask_losses_22 = [], [], [], []
-            aggregated_segment_tokens_23, weak_segment_logits_23, rest_segment_logits_23, segment_mask_losses_23 = [], [], [], []
+            aggregated_segment_tokens_21, weak_segment_logits_21, rest_segment_logits_21 = [], [], []
+            aggregated_segment_tokens_22, weak_segment_logits_22, rest_segment_logits_22 = [], [], []
+            aggregated_segment_tokens_23, weak_segment_logits_23, rest_segment_logits_23 = [], [], []
         
         for b in range(B):
             with torch.no_grad():
@@ -167,17 +164,16 @@ class GPS_DINO(nn.Module):
                 cluster_prototype_tokens_22 = self.layerwise_segment(patch_tokens_22[b], cluster_labels) # shape: [num_clusters, 1024]
                 cluster_prototype_tokens_23 = self.layerwise_segment(patch_tokens_23[b], cluster_labels) # shape: [num_clusters, 1024]
 
-                aggregated_segment_token, weak_segment_logit, rest_segment_logit, weak_segment_instance_logit = self.segment_classifier_reducer(cluster_prototype_tokens.unsqueeze(0), MIL_learning=True, reduction='mean', return_instance_logits=True, gt_mask = None, cluster_labels=cluster_labels)  # shape: [1, 1024], [1], [1], [1, num_clusters]
-            
+            aggregated_segment_token, weak_segment_logit, rest_segment_logit, weak_segment_instance_logit = self.segment_classifier_reducer(cluster_prototype_tokens.unsqueeze(0), MIL_learning=True, reduction='mean', return_instance_logits=True)  # shape: [1, 1024], [1], [1], [1, num_clusters]
+
             if self.use_deep_supervision:
-                aggregated_segment_token_21, weak_segment_logit_21, rest_segment_logit_21, weak_segment_instance_logit_21 = self.segment_classifier_reducer_21(cluster_prototype_tokens_21.unsqueeze(0), MIL_learning=True, reduction='mean', return_instance_logits=True, gt_mask = None, cluster_labels=cluster_labels)  # shape: [1, 1024], [1], [1], [1, num_clusters]
-                aggregated_segment_token_22, weak_segment_logit_22, rest_segment_logit_22, weak_segment_instance_logit_22 = self.segment_classifier_reducer_22(cluster_prototype_tokens_22.unsqueeze(0), MIL_learning=True, reduction='mean', return_instance_logits=True, gt_mask = None, cluster_labels=cluster_labels)  # shape: [1, 1024], [1], [1], [1, num_clusters]
-                aggregated_segment_token_23, weak_segment_logit_23, rest_segment_logit_23, weak_segment_instance_logit_23 = self.segment_classifier_reducer_23(cluster_prototype_tokens_23.unsqueeze(0), MIL_learning=True, reduction='mean', return_instance_logits=True, gt_mask = None, cluster_labels=cluster_labels)  # shape: [1, 1024], [1], [1], [1, num_clusters]
-                
+                aggregated_segment_token_21, weak_segment_logit_21, rest_segment_logit_21, weak_segment_instance_logit_21 = self.segment_classifier_reducer_21(cluster_prototype_tokens_21.unsqueeze(0), MIL_learning=True, reduction='mean', return_instance_logits=True)  # shape: [1, 1024], [1], [1], [1, num_clusters]
+                aggregated_segment_token_22, weak_segment_logit_22, rest_segment_logit_22, weak_segment_instance_logit_22 = self.segment_classifier_reducer_22(cluster_prototype_tokens_22.unsqueeze(0), MIL_learning=True, reduction='mean', return_instance_logits=True)  # shape: [1, 1024], [1], [1], [1, num_clusters]
+                aggregated_segment_token_23, weak_segment_logit_23, rest_segment_logit_23, weak_segment_instance_logit_23 = self.segment_classifier_reducer_23(cluster_prototype_tokens_23.unsqueeze(0), MIL_learning=True, reduction='mean', return_instance_logits=True)  # shape: [1, 1024], [1], [1], [1, num_clusters]
+
             aggregated_segment_tokens_24.append(aggregated_segment_token)
             weak_segment_logits_24.append(weak_segment_logit)
             rest_segment_logits_24.append(rest_segment_logit)
-
 
             if self.use_deep_supervision:
                 aggregated_segment_tokens_21.append(aggregated_segment_token_21)
@@ -191,8 +187,6 @@ class GPS_DINO(nn.Module):
                 aggregated_segment_tokens_23.append(aggregated_segment_token_23)
                 weak_segment_logits_23.append(weak_segment_logit_23)
                 rest_segment_logits_23.append(rest_segment_logit_23)
-
-
 
         aggregated_segment_tokens_24 = torch.stack(aggregated_segment_tokens_24, dim=0).squeeze(dim=1)  # shape: [B, 1024]
         weak_segment_logits_24 = torch.stack(weak_segment_logits_24, dim=0)  # shape: [B]
@@ -212,14 +206,6 @@ class GPS_DINO(nn.Module):
             weak_segment_logits_23 = torch.stack(weak_segment_logits_23, dim=0)  # shape: [B]
             rest_segment_logits_23 = torch.stack(rest_segment_logits_23, dim=0)  # shape: [B]
             
-
-        if mask is not None:
-            segment_mask_losses_24 = torch.stack(segment_mask_losses_24, dim=0)  # shape: [B]
-
-            if self.use_deep_supervision:
-                segment_mask_losses_21 = torch.stack(segment_mask_losses_21, dim=0)  # shape: [B]
-                segment_mask_losses_22 = torch.stack(segment_mask_losses_22, dim=0)  # shape: [B]
-                segment_mask_losses_23 = torch.stack(segment_mask_losses_23, dim=0)  # shape: [B]
 
         segment_logits_24 = self.segment_classifier(self.norm_segment(aggregated_segment_tokens_24)) # shape: [B, 1]
 
@@ -315,11 +301,6 @@ class GPS_DINO(nn.Module):
             }
 
         if is_training == False:
-            if if_return_feature == False:
-                return main_logits_24.squeeze(1), global_logits_24.squeeze(1), patch_logits_24.squeeze(1), segment_logits_24.squeeze(1)#, weak_patch_logits_24, weak_segment_logits_24
-            else:
-                return main_logits_24.squeeze(1), global_logits_24.squeeze(1), patch_logits_24.squeeze(1), segment_logits_24.squeeze(1), overall_feature_24
-        if visualize:
-            return logits_dict, tokens_dict, weak_segment_instance_logit, cluster_labels, patch_logits
+            return main_logits_24.squeeze(1), global_logits_24.squeeze(1), patch_logits_24.squeeze(1), segment_logits_24.squeeze(1)
         else:
             return logits_dict, tokens_dict
