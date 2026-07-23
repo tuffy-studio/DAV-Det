@@ -12,7 +12,7 @@ use_deep_supervision=False
 layer_indices="24"
 unfreeze_norm=True
 pretrain_path=""
-img_size=224
+img_size=512 # 512 for MVAD, 224 for Fakeavceleb
 
 restart=False
 checkpoint_root=""
@@ -42,7 +42,7 @@ gpu_num=8
 use_amp=True
 verbose=True
 cls_loss="focal"
-focal_alpha=0.6
+focal_alpha=0.6 # 0.6 for MVAD, 0.4 for Fakeavceleb
 focal_gamma_pos=2.0
 focal_gamma_neg=2.0
 
