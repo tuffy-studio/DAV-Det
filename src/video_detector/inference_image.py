@@ -92,7 +92,7 @@ if __name__ == "__main__":
     eval_loader = DataLoader(
         eval_dataset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=args.num_workers,
         pin_memory=False,
         drop_last=False,

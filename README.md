@@ -25,6 +25,7 @@
 - 🏆 **[June 2026]**  Our method ranked 1st in the [General AIGC Audio-Video Detection challenge](https://www.codabench.org/competitions/15769/#/pages-tab).
 - 🎉 **[June 2026]**  The training and inference code is released.
 - 🤗 **[June 2026]**  The model weights of DAV-Det trained on the MVAD dataset are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
+- 🤗 **[July 2026]**  The model weights of DAV-Det trained on the FakeAVCeleb dataset are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
 <!-- - **[July 2026]** Our solution paper is available on arXiv: [https://arxiv.org/abs/2603.23960](https://arxiv.org/abs/2603.23960). -->
 
 ## Overview

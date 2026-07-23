@@ -1,14 +1,14 @@
 """
-AASIST-Style Backend for Variable-Length Audio Deepfake Detection
+Audio Detector Backend for Variable-Length Audio Deepfake Detection
 
-Inspired by AASIST (Graph Attention + Dual-Branch + Master Node),
-but adapted for variable-length sequences using Self-Attention.
+A dual-branch (temporal + spectral) backend with attention-based aggregation
+and a master-node readout for binary fake/real classification.
 
-Key differences from original AASIST:
-    - Self-Attention replaces GAT (naturally supports variable length + padding mask)
-    - No fixed-size 2D convolutions or position encodings
-    - No GraphPool (uses attention-based aggregation instead)
-    - Maintains mask-aware processing throughout
+Key characteristics:
+    - Multi-Head Self-Attention over time frames
+    - Channel attention over feature dimensions
+    - Attention-based pooling and masked statistics
+    - Mask-aware processing throughout
 """
 
 import os
@@ -21,7 +21,7 @@ from typing import Optional
 class LightweightAttentionMap(nn.Module):
     """
     Generate attention weights for dual-branch feature extraction.
-    Replaces AASIST's 1x1 conv attention map with a lightweight MLP.
+    Uses a lightweight MLP to produce per-token scalar weights.
     """
     def __init__(self, dim=1024, hidden_dim=128):
         super().__init__()
@@ -178,9 +178,9 @@ class AttentionPooling(nn.Module):
         return pooled
 
 
-class AASISTStyleBackend(nn.Module):
+class AudioDetectorBackend(nn.Module):
     """
-    AASIST-inspired backend that supports variable-length sequences.
+    Audio detector backend that supports variable-length sequences.
     
     Architecture:
         1. Attention Map Generation (lightweight MLP)
@@ -196,65 +196,45 @@ class AASISTStyleBackend(nn.Module):
         input_dim=1024,
         num_heads=8,
         attn_dropout=0.1,
-        use_dual_path=True,
-        use_attention_pooling=True,
     ):
         super().__init__()
-        
+
         self.input_dim = input_dim
-        self.use_dual_path = use_dual_path
-        self.use_attention_pooling = use_attention_pooling
-        
+
         # 1. Attention Map Generation
         self.attention_map = LightweightAttentionMap(dim=input_dim, hidden_dim=128)
-        
+
         # 2. Dual-Branch Feature Extraction
-        if use_dual_path:
-            # Temporal Branch: Self-Attention over time frames
-            self.temporal_attn = MaskedSelfAttention(input_dim, num_heads, attn_dropout)
-            self.temporal_norm = nn.LayerNorm(input_dim)
-            
-            # Spectral Branch: Channel attention over feature dimensions
-            self.spectral_attn = ChannelAttention(input_dim, reduction=16)
-            
-            # Pooling for each branch
-            if use_attention_pooling:
-                self.temporal_pool = AttentionPooling(input_dim, num_queries=1, num_heads=num_heads)
-                self.spectral_pool = AttentionPooling(input_dim, num_queries=1, num_heads=num_heads)
-        
+        # Temporal Branch: Self-Attention over time frames
+        self.temporal_attn = MaskedSelfAttention(input_dim, num_heads, attn_dropout)
+        self.temporal_norm = nn.LayerNorm(input_dim)
+
+        # Spectral Branch: Channel attention over feature dimensions
+        self.spectral_attn = ChannelAttention(input_dim, reduction=16)
+
+        # Pooling for each branch
+        self.temporal_pool = AttentionPooling(input_dim, num_queries=1, num_heads=num_heads)
+        self.spectral_pool = AttentionPooling(input_dim, num_queries=1, num_heads=num_heads)
+
         # 3. Master Node Interaction
         self.master_dim = input_dim
-        if use_dual_path:
-            self.master_cross_attn = nn.MultiheadAttention(
-                input_dim, num_heads, dropout=attn_dropout, batch_first=True
-            )
-            self.master_norm = nn.LayerNorm(input_dim)
-        
-        # 4. Readout dimension calculation
-        if use_dual_path:
-            if use_attention_pooling:
-                # master(1024) + temporal_pool(1024) + temporal_max(1024) + temporal_mean(1024)
-                #               + spectral_pool(1024) + spectral_max(1024) + spectral_mean(1024)
-                readout_dim = input_dim * 7
-            else:
-                # master(1024) + temporal_max(1024) + temporal_mean(1024)
-                #               + spectral_max(1024) + spectral_mean(1024)
-                readout_dim = input_dim * 5
-        else:
-            # master(1024) + frame_max(1024) + frame_mean(1024)
-            readout_dim = input_dim * 3
-        
-        self.readout_dim = readout_dim
-        
+        self.master_cross_attn = nn.MultiheadAttention(
+            input_dim, num_heads, dropout=attn_dropout, batch_first=True
+        )
+        self.master_norm = nn.LayerNorm(input_dim)
+
+        # 4. Readout: master + temporal_pool/max/mean + spectral_pool/max/mean
+        self.readout_dim = input_dim * 7
+
         # 5. MLP Classifier
         self.classifier = nn.Sequential(
-            nn.Linear(readout_dim, 512),
+            nn.Linear(self.readout_dim, 512),
             nn.SELU(inplace=True),
             nn.Dropout(0.3),
             nn.LayerNorm(512),
             nn.Linear(512, 1),
         )
-        
+
         self._init_weights()
         
     def _init_weights(self):
@@ -292,108 +272,77 @@ class AASISTStyleBackend(nn.Module):
             frame_features: (B, T, D) frame-level features from transformer
             cls_token: (B, D) cls token from transformer
             padding_mask: (B, T), True for valid frame positions
-        
+
         Returns:
             logits: (B,) raw logits
             prob: (B,) fake probability
             features: (B, readout_dim) readout features
         """
-        B, T, D = frame_features.shape
-        
         # 1. Generate attention weights
         attn_weights = self.attention_map(frame_features, padding_mask)  # (B, T, D)
         weighted_features = frame_features * attn_weights  # (B, T, D)
-        
-        if self.use_dual_path:
-            # ===== Temporal Branch =====
-            temporal_out, _ = self.temporal_attn(weighted_features, padding_mask)  # (B, T, D)
-            temporal_out = self.temporal_norm(temporal_out + weighted_features)
-            
-            temporal_max, temporal_mean = self._masked_stats(temporal_out, padding_mask)
-            
-            if self.use_attention_pooling:
-                temporal_pooled = self.temporal_pool(temporal_out, padding_mask).squeeze(1)
-            
-            # ===== Spectral Branch =====
-            spectral_out = self.spectral_attn(weighted_features, padding_mask)  # (B, T, D)
-            
-            spectral_max, spectral_mean = self._masked_stats(spectral_out, padding_mask)
-            
-            if self.use_attention_pooling:
-                spectral_pooled = self.spectral_pool(spectral_out, padding_mask).squeeze(1)
-            
-            # ===== Master Node Interaction =====
-            if self.use_attention_pooling:
-                branch_outputs = torch.stack([
-                    temporal_pooled, temporal_max, temporal_mean,
-                    spectral_pooled, spectral_max, spectral_mean
-                ], dim=1)  # (B, 6, D)
-            else:
-                branch_outputs = torch.stack([
-                    temporal_max, temporal_mean,
-                    spectral_max, spectral_mean
-                ], dim=1)  # (B, 4, D)
-            
-            master_query = cls_token.unsqueeze(1)  # (B, 1, D)
-            master_out, _ = self.master_cross_attn(
-                master_query, branch_outputs, branch_outputs,
-                need_weights=False
-            )
-            master_out = self.master_norm(master_out.squeeze(1) + cls_token)
-            
-            # ===== Readout =====
-            if self.use_attention_pooling:
-                readout = torch.cat([
-                    master_out,
-                    temporal_pooled, temporal_max, temporal_mean,
-                    spectral_pooled, spectral_max, spectral_mean,
-                ], dim=-1)
-            else:
-                readout = torch.cat([
-                    master_out,
-                    temporal_max, temporal_mean,
-                    spectral_max, spectral_mean,
-                ], dim=-1)
-        else:
-            # Simple path
-            frame_max, frame_mean = self._masked_stats(weighted_features, padding_mask)
-            readout = torch.cat([cls_token, frame_max, frame_mean], dim=-1)
-        
-        # 5. Classifier
+
+        # 2. Temporal Branch
+        temporal_out, _ = self.temporal_attn(weighted_features, padding_mask)  # (B, T, D)
+        temporal_out = self.temporal_norm(temporal_out + weighted_features)
+        temporal_max, temporal_mean = self._masked_stats(temporal_out, padding_mask)
+        temporal_pooled = self.temporal_pool(temporal_out, padding_mask).squeeze(1)
+
+        # 3. Spectral Branch
+        spectral_out = self.spectral_attn(weighted_features, padding_mask)  # (B, T, D)
+        spectral_max, spectral_mean = self._masked_stats(spectral_out, padding_mask)
+        spectral_pooled = self.spectral_pool(spectral_out, padding_mask).squeeze(1)
+
+        # 4. Master Node Interaction
+        branch_outputs = torch.stack([
+            temporal_pooled, temporal_max, temporal_mean,
+            spectral_pooled, spectral_max, spectral_mean
+        ], dim=1)  # (B, 6, D)
+
+        master_query = cls_token.unsqueeze(1)  # (B, 1, D)
+        master_out, _ = self.master_cross_attn(
+            master_query, branch_outputs, branch_outputs,
+            need_weights=False
+        )
+        master_out = self.master_norm(master_out.squeeze(1) + cls_token)
+
+        # 5. Readout
+        readout = torch.cat([
+            master_out,
+            temporal_pooled, temporal_max, temporal_mean,
+            spectral_pooled, spectral_max, spectral_mean,
+        ], dim=-1)
+
+        # 6. Classifier
         logits = self.classifier(readout).squeeze(-1)
         prob = torch.sigmoid(logits)
-        
+
         return logits, prob, readout
 
 
-class SimpleDetectorWithAASISTBackend(nn.Module):
+class AudioDeepfakeDetector(nn.Module):
     """
-    Drop-in replacement for SimpleDeepfakeDetector with AASIST-style backend.
-    Maintains the same interface.
+    Audio deepfake detector combining a PE-AV frontend and the audio detector backend.
     """
     def __init__(
         self,
         feature_extractor,
         num_heads=8,
         attn_dropout=0.1,
-        use_dual_path=True,
-        use_attention_pooling=True,
         use_deep_supervision=False,
         num_supervision_layers=3,
     ):
         super().__init__()
-        
+
         self.feature_extractor = feature_extractor
         self.use_deep_supervision = use_deep_supervision
         self.num_supervision_layers = num_supervision_layers
-        
+
         # Main backend
-        self.backend = AASISTStyleBackend(
+        self.backend = AudioDetectorBackend(
             input_dim=1024,
             num_heads=num_heads,
             attn_dropout=attn_dropout,
-            use_dual_path=use_dual_path,
-            use_attention_pooling=use_attention_pooling,
         )
         
         # Deep supervision
@@ -412,7 +361,7 @@ class SimpleDetectorWithAASISTBackend(nn.Module):
         # Print parameter counts
         total = sum(p.numel() for p in self.parameters())
         trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        print(f"SimpleDetectorWithAASISTBackend:")
+        print(f"AudioDeepfakeDetector:")
         print(f"  Total params: {total/1e6:.2f}M")
         print(f"  Trainable params: {trainable/1e6:.2f}M")
         print(f"  Frozen params: {(total-trainable)/1e6:.2f}M")
@@ -424,7 +373,7 @@ class SimpleDetectorWithAASISTBackend(nn.Module):
         if_return_feature: bool = False,
     ):
         """
-        Same interface as SimpleDeepfakeDetector.
+        Forward pass returning logits, probabilities, and optional features.
         """
         features = self.feature_extractor(
             input_values=input_values,

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Inference script for CSV input
-export CUDA_VISIBLE_DEVICES=7
+
+export CUDA_VISIBLE_DEVICES=0
 # Configuration
-CHECKPOINT="./weights/audio_model.20.pt"
-INPUT_CSV=""
-OUTPUT_CSV="audio_prob.csv"
+CHECKPOINT="./weights/audio_model.pth" 
+INPUT_CSV="" # TODO
+OUTPUT_CSV="" # TODO
 
 DEVICE="cuda"
 MODE="infer"
@@ -14,7 +14,6 @@ python inference.py \
     --checkpoint ${CHECKPOINT} \
     --input ${INPUT_CSV} \
     --output ${OUTPUT_CSV} \
-    --save_features \
     --device ${DEVICE} \
     --mode ${MODE} \
     --resume

@@ -9,7 +9,6 @@ VIDEO_BATCH_SIZE=4
 FRAME_BATCH_SIZE=64
 IMG_SIZE=640
 NUM_WORKERS=2
-MODE="eval"
 
 
 python inference.py \

@@ -1,31 +1,21 @@
-"""
-Training Script for AASIST-Style Backend Audio Deepfake Detector
-
-PE-AV AudioEncoder (with LoRA) + AASISTStyleBackend classifier
-"""
-
 import os
 import sys
 import argparse
-import json
-from pathlib import Path
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+
 from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
 import numpy as np
 from loss_function import sigmoid_focal_loss
 
-
 # Add project path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'models'))
-
-from audio_deepfake_detector import build_detector_aasist
+from audio_detector import build_detector
 from dataloader import get_dataloader
-
 
 class Trainer:
     def __init__(self, config: dict):
@@ -58,12 +48,10 @@ class Trainer:
                 alpha=config.get('focal_alpha', 0.5),
                 gamma_pos=config.get('focal_gamma_pos', 2.0),
                 gamma_neg=config.get('focal_gamma_neg', 2.0),
-                mu=config.get('focal_mu', 0.05),
             )
             print(f"Using Focal Loss: alpha={config.get('focal_alpha', 0.5)}, "
                   f"gamma_pos={config.get('focal_gamma_pos', 2.0)}, "
-                  f"gamma_neg={config.get('focal_gamma_neg', 2.0)}, "
-                  f"mu={config.get('focal_mu', 0.05)}")
+                  f"gamma_neg={config.get('focal_gamma_neg', 2.0)}")
         else:
             self.criterion = nn.BCEWithLogitsLoss()
             print("Using BCEWithLogitsLoss")
@@ -84,10 +72,10 @@ class Trainer:
             print("Using Automatic Mixed Precision (AMP)")
     
     def _build_model(self):
-        """Build model with AASIST-style backend."""
-        print("Building model with AASIST-style backend...")
-        
-        self.model = build_detector_aasist(
+        """Build model with audio detector backend."""
+        print("Building model with audio detector backend...")
+
+        self.model = build_detector(
             peav_checkpoint=self.config['peav_checkpoint'],
             use_lora=self.config['use_lora'],
             lora_r=self.config['lora_r'],
@@ -99,8 +87,6 @@ class Trainer:
             num_supervision_layers=self.config.get('num_supervision_layers', 3),
             num_heads=self.config.get('num_heads', 8),
             attn_dropout=self.config.get('attn_dropout', 0.1),
-            use_dual_path=self.config.get('use_dual_path', True),
-            use_attention_pooling=self.config.get('use_attention_pooling', True),
         )
         
         # Wrap with DataParallel if requested
@@ -470,21 +456,21 @@ class Trainer:
             print(f"  AMP: enabled")
         print(f"  Clip length: {self.clip_length/48000:.1f}s")
         print(f"  Batch size: {self.config['batch_size']}")
-        print(f"  Backend: AASIST-style (dual_path={self.config.get('use_dual_path', True)}, attention_pooling={self.config.get('use_attention_pooling', True)})")
+        print(f"  Backend: audio detector backend")
         
         for epoch in range(self.epoch, self.config['epochs']):
             self.epoch = epoch
             
             # Train
             train_metrics = self.train_epoch()
-            print(f"\nEpoch {epoch} - Train:")
+            print(f"\nEpoch {epoch+1} - Train:")
             print(f"  Loss: {train_metrics['loss']:.4f}")
             print(f"  Acc:  {train_metrics['acc']:.4f}")
             
             # Evaluate
             if self.config.get('do_eval', False):
                 dev_metrics = self.evaluate(self.dev_loader)
-                print(f"\nEpoch {epoch} - Dev:")
+                print(f"\nEpoch {epoch+1} - Dev:")
                 print(f"  Loss: {dev_metrics['loss']:.4f}")
                 print(f"  EER:  {dev_metrics['eer']:.2f}%")
                 print(f"  AUC:  {dev_metrics['auc']:.2f}%")
@@ -497,7 +483,7 @@ class Trainer:
                 os.makedirs(self.config['save_dir'], exist_ok=True)
                 checkpoint_path = os.path.join(
                     self.config['save_dir'],
-                    f'model.{epoch+1}.pt'
+                    f'audio_model.{epoch+1}.pt'
                 )
                 
                 is_best = dev_metrics['eer'] < self.best_eer
@@ -510,20 +496,20 @@ class Trainer:
                 os.makedirs(self.config['save_dir'], exist_ok=True)
                 checkpoint_path = os.path.join(
                     self.config['save_dir'],
-                    f'model.{epoch+1}.pt'
+                    f'audio_model.{epoch+1}.pt'
                 )
                 self.save_checkpoint(checkpoint_path, is_best=False)
                 print(f"  Saved checkpoint (no eval)")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Train AASIST-Style Backend Audio Deepfake Detector')
+    parser = argparse.ArgumentParser(description='Train Audio Deepfake Detector')
     
     # Data paths
     parser.add_argument('--train_csv', type=str)
-    parser.add_argument('--train_audio_dir', type=str)
+    parser.add_argument('--train_audio_dir', type=str, default='')
     parser.add_argument('--dev_csv', type=str)
-    parser.add_argument('--dev_audio_dir', type=str)
+    parser.add_argument('--dev_audio_dir', type=str, default='')
     parser.add_argument('--peav_checkpoint', type=str)
     parser.add_argument('--save_dir', type=str, default='weights')
     
@@ -550,19 +536,11 @@ def main():
     parser.add_argument('--lora_dropout', type=float, default=0.1)
     parser.add_argument('--unfreeze_norm', action='store_true', default=True)
     
-    # AASIST-style backend config
+    # Audio detector backend config
     parser.add_argument('--num_heads', type=int, default=8,
                         help='Number of attention heads for temporal branch (default: 8)')
     parser.add_argument('--attn_dropout', type=float, default=0.1,
                         help='Dropout for attention layers (default: 0.1)')
-    parser.add_argument('--use_dual_path', action='store_true', default=True,
-                        help='Use dual-branch (temporal + spectral)')
-    parser.add_argument('--no_dual_path', action='store_true',
-                        help='Disable dual-path, use single branch')
-    parser.add_argument('--use_attention_pooling', action='store_true', default=True,
-                        help='Use attention-based pooling')
-    parser.add_argument('--no_attention_pooling', action='store_true',
-                        help='Disable attention pooling, use only max/mean')
     
     # Deep supervision
     parser.add_argument('--use_deep_supervision', action='store_true', default=True)
@@ -591,7 +569,7 @@ def main():
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--resume', type=str, default=None)
     parser.add_argument('--pretrained', type=str, default=None)
-    parser.add_argument('--no_eval', action='store_true', default=True)
+    parser.add_argument('--no_eval', action='store_true', default=False)
     
     args = parser.parse_args()
     
@@ -600,11 +578,7 @@ def main():
         args.freeze_extractor = False
     if args.no_lora:
         args.use_lora = False
-    if args.no_dual_path:
-        args.use_dual_path = False
-    if args.no_attention_pooling:
-        args.use_attention_pooling = False
-    
+
     config = vars(args)
     config['do_eval'] = not args.no_eval
     

@@ -2,37 +2,10 @@ import os
 import sys
 import argparse
 import csv
-import tempfile
 import subprocess
-from pathlib import Path
 from tqdm import tqdm
-
 import torch
 import torchaudio
-
-
-# --- Resume helpers ---
-
-def _read_done_set(path: str, key_column: str = 'file_path') -> set:
-    """Read already processed file_paths from a partial output CSV.
-    
-    Args:
-        path: path to CSV file
-        key_column: column name to use as unique key (default: 'file_path')
-    """
-    done = set()
-    if not os.path.exists(path):
-        return done
-    with open(path, 'r', newline='') as f:
-        reader = csv.DictReader(f)
-        if reader.fieldnames is None:
-            return done
-        for row in reader:
-            fp = row.get(key_column, '')
-            if fp:
-                done.add(fp)
-    return done
-
 
 def _append_row(path: str, fieldnames: list, row: dict):
     """Append a single row to a CSV file (create with header if not exists)."""
@@ -51,7 +24,7 @@ if not hasattr(np, '_core'):
     sys.modules['numpy._core.multiarray'] = np.core.multiarray
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'models'))
-from audio_deepfake_detector import build_detector_aasist
+from audio_detector import build_detector
 
 
 CLIP_LENGTH = 48000 * 3   # 3s @ 48kHz
@@ -245,21 +218,21 @@ def inference_file(model, waveform: torch.Tensor, device: torch.device,
 
 def load_model(checkpoint_path: str, device: str):
     """Load model from checkpoint.
-    
-    Auto-detects whether the checkpoint was trained with AASIST-style backend
-    or original MLP backend based on state_dict keys.
+
+    Auto-detects whether the checkpoint contains an audio detector backend
+    based on state_dict keys.
     """
     print(f"Loading checkpoint from {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     config = checkpoint.get('config', {})
     state_dict = checkpoint['model_state_dict']
-    
+
     # Auto-detect backend type from state_dict keys
-    is_aasist_backend = any('backend.' in k for k in state_dict.keys())
-    
-    if is_aasist_backend:
-        print("Detected AASIST-style backend checkpoint")
-        model = build_detector_aasist(
+    has_backend = any('backend.' in k for k in state_dict.keys())
+
+    if has_backend:
+        print("Detected audio detector backend checkpoint")
+        model = build_detector(
             peav_checkpoint=config.get('peav_checkpoint', './pe-av-base'),
             use_lora=config.get('use_lora', True),
             lora_r=config.get('lora_r', 32),
@@ -271,13 +244,10 @@ def load_model(checkpoint_path: str, device: str):
             num_supervision_layers=config.get('num_supervision_layers', 3),
             num_heads=config.get('num_heads', 8),
             attn_dropout=config.get('attn_dropout', 0.1),
-            use_dual_path=config.get('use_dual_path', True),
-            use_attention_pooling=config.get('use_attention_pooling', True),
         )
     else:
-        print("Please load correct checkpoint!")
+        raise ValueError("Unsupported checkpoint: audio detector backend not found")
 
-    
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
