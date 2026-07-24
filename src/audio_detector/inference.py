@@ -2,8 +2,11 @@ import os
 import sys
 import argparse
 import csv
+import tempfile
 import subprocess
+from pathlib import Path
 from tqdm import tqdm
+
 import torch
 import torchaudio
 
@@ -216,48 +219,90 @@ def inference_file(model, waveform: torch.Tensor, device: torch.device,
     return prob, failed_chunks
 
 
-def load_model(checkpoint_path: str, device: str):
-    """Load model from checkpoint.
+def load_model(checkpoint_path: str, device: str, peav_checkpoint: str = None):
+    """Load model from checkpoint or raw state dict.
 
-    Auto-detects whether the checkpoint contains an audio detector backend
-    based on state_dict keys.
+    Supports two checkpoint formats:
+      1. Full training checkpoint (dict with 'model_state_dict' and 'config')
+      2. Raw state dict only (e.g. extracted by extract_model_state.py)
+
+    For raw state dict, architecture flags are inferred from the keys and
+    peav_checkpoint must be provided either via argument or in the config.
     """
     print(f"Loading checkpoint from {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
-    config = checkpoint.get('config', {})
-    state_dict = checkpoint['model_state_dict']
+    raw = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+
+    if isinstance(raw, dict) and 'model_state_dict' in raw:
+        checkpoint = raw
+        config = checkpoint.get('config', {})
+        state_dict = checkpoint['model_state_dict']
+        epoch = checkpoint.get('epoch', 'unknown')
+        print("Detected full training checkpoint")
+    else:
+        # Raw state dict
+        state_dict = raw
+        config = {}
+        epoch = 'unknown (raw state dict)'
+        print("Detected raw model state dict")
+
+    # Override peav_checkpoint if provided explicitly
+    if peav_checkpoint is not None:
+        config['peav_checkpoint'] = peav_checkpoint
+
+    if 'peav_checkpoint' not in config:
+        raise ValueError(
+            "peav_checkpoint is required to build the model. "
+            "Pass --peav_checkpoint or use a full checkpoint with config."
+        )
 
     # Auto-detect backend type from state_dict keys
     has_backend = any('backend.' in k for k in state_dict.keys())
-
-    if has_backend:
-        print("Detected audio detector backend checkpoint")
-        model = build_detector(
-            peav_checkpoint=config.get('peav_checkpoint', './pe-av-base'),
-            use_lora=config.get('use_lora', True),
-            lora_r=config.get('lora_r', 32),
-            lora_alpha=config.get('lora_alpha', 64),
-            lora_dropout=config.get('lora_dropout', 0.1),
-            unfreeze_norm=config.get('unfreeze_norm', True),
-            device=device,
-            use_deep_supervision=config.get('use_deep_supervision', False),
-            num_supervision_layers=config.get('num_supervision_layers', 3),
-            num_heads=config.get('num_heads', 8),
-            attn_dropout=config.get('attn_dropout', 0.1),
-        )
-    else:
+    if not has_backend:
         raise ValueError("Unsupported checkpoint: audio detector backend not found")
 
-    model.load_state_dict(checkpoint['model_state_dict'])
+    # Infer architecture flags from state dict if not in config
+    use_lora = config.get('use_lora', any('lora_' in k for k in state_dict.keys()))
+    use_deep_supervision = config.get(
+        'use_deep_supervision',
+        any(k.startswith('aux_heads.') for k in state_dict.keys())
+    )
+    num_supervision_layers = config.get('num_supervision_layers', 0)
+    if use_deep_supervision and num_supervision_layers == 0:
+        # Infer from aux_heads.N.xxx keys
+        aux_indices = [
+            int(k.split('.')[1])
+            for k in state_dict.keys()
+            if k.startswith('aux_heads.')
+        ]
+        num_supervision_layers = max(aux_indices) + 1 if aux_indices else 3
+
+    print("Detected audio detector backend checkpoint")
+    model = build_detector(
+        peav_checkpoint=config['peav_checkpoint'],
+        use_lora=use_lora,
+        lora_r=config.get('lora_r', 32),
+        lora_alpha=config.get('lora_alpha', 64),
+        lora_dropout=config.get('lora_dropout', 0.1),
+        unfreeze_norm=config.get('unfreeze_norm', True),
+        device=device,
+        use_deep_supervision=use_deep_supervision,
+        num_supervision_layers=num_supervision_layers,
+        num_heads=config.get('num_heads', 8),
+        attn_dropout=config.get('attn_dropout', 0.1),
+    )
+
+    model.load_state_dict(state_dict)
     model.eval()
-    print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
+    print(f"Loaded checkpoint from epoch {epoch}")
     return model
 
 
 def main():
     parser = argparse.ArgumentParser(description='Inference from CSV file')
     parser.add_argument('--checkpoint', type=str, required=True,
-                        help='Path to checkpoint file')
+                        help='Path to checkpoint file (full checkpoint or raw state dict)')
+    parser.add_argument('--peav_checkpoint', type=str, default=None,
+                        help='Path to PE-AV base weights (required when loading raw state dict)')
     parser.add_argument('--input', type=str, required=True,
                         help='Input CSV file with file_path column')
     parser.add_argument('--output', type=str, default='predictions.csv',
@@ -278,7 +323,7 @@ def main():
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    model = load_model(args.checkpoint, device)
+    model = load_model(args.checkpoint, device, peav_checkpoint=args.peav_checkpoint)
     
     # Read CSV
     samples = []
