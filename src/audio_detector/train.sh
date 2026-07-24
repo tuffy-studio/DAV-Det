@@ -66,6 +66,14 @@ echo "Deep supervision: ${USE_DEEP_SUPERVISION}"
 echo "Loss: ${LOSS_TYPE}"
 echo "=========================================="
 
+# Build optional deep supervision flag
+if [ "${USE_DEEP_SUPERVISION}" = "true" ]; then
+    DS_FLAG="--use_deep_supervision"
+else
+    DS_FLAG=""
+fi
+
+
 python3 train.py \
     --train_csv ${TRAIN_CSV} \
     --dev_csv ${DEV_CSV} \
@@ -89,7 +97,6 @@ python3 train.py \
     --unfreeze_norm \
     --num_heads ${NUM_HEADS} \
     --attn_dropout ${ATTN_DROPOUT} \
-    --use_deep_supervision \
     --num_supervision_layers ${NUM_SUPERVISION_LAYERS} \
     --aux_loss_weight ${AUX_LOSS_WEIGHT} \
     --loss_type ${LOSS_TYPE} \
@@ -103,7 +110,8 @@ python3 train.py \
     --no_eval \
     --device ${DEVICE} \
     --use_dp \
-    --gpu_ids 0 1
+    --gpu_ids 0 1 \
+    ${DS_FLAG} \
     "$@"
 
 echo "=========================================="

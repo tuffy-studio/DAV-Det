@@ -543,7 +543,7 @@ def main():
                         help='Dropout for attention layers (default: 0.1)')
     
     # Deep supervision
-    parser.add_argument('--use_deep_supervision', action='store_true', default=True)
+    parser.add_argument('--use_deep_supervision', action='store_true', default=False)
     parser.add_argument('--num_supervision_layers', type=int, default=3)
     parser.add_argument('--aux_loss_weight', type=float, default=0.5)
     
