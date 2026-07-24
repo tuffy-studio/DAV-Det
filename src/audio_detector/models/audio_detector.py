@@ -17,7 +17,7 @@ def build_detector(
     lora_dropout: float = 0.1,
     unfreeze_norm: bool = True,
     device: str = "cuda",
-    use_deep_supervision: bool = True,
+    use_deep_supervision: bool = False,
     num_supervision_layers: int = 3,
     num_heads: int = 8,
     attn_dropout: float = 0.1,
