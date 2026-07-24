@@ -95,16 +95,11 @@ pip install -r src/video_detector/video_requirements.txt
 
 ### 1.2 Download Pretrained Models Weights and Configures
 
-#### Audio Detector Configure
+
 
 | Model | Source | Placement |
 |---|---|---|
 | PE-AV Base | [huggingface.co/facebook/pe-av-base](https://huggingface.co/facebook/pe-av-base) | `./src/audio_detector/` |
-
-#### Video Detector Configure
-
-| Model | Source | Placement |
-|---|---|---|
 | DINOv3 ViT-L/16 | [ModelScope - dinov3-vitl16-pretrain-lvd1689m](https://www.modelscope.cn/models/facebook/dinov3-vitl16-pretrain-lvd1689m) | `./src/video_detector/` |
 
 
