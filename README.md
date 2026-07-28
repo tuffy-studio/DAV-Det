@@ -11,8 +11,8 @@
     <img src="https://img.shields.io/badge/Github-DAVDet-black?logo=github">
   </a>
   &nbsp;&nbsp;&nbsp;
-  <a href="https://arxiv.org/abs/tbd">
-    <img src="https://img.shields.io/badge/arXiv-tbd-b31b1b.svg?logo=arXiv">
+  <a href="./assets/IJCAI_ECAI_26_challenge_track2.pdf">
+    <img src="https://img.shields.io/badge/arXiv-DAVDet-b31b1b.svg?logo=arXiv">
   </a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://huggingface.co/JielunPeng/DAV-Det/">
@@ -26,7 +26,7 @@
 - 🎉 **[June 2026]**  The training and inference code is released.
 - 🤗 **[June 2026]**  The model weights of DAV-Det trained on the MVAD dataset are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
 - 🤗 **[July 2026]**  The model weights of DAV-Det trained on the FakeAVCeleb dataset are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
-<!-- - **[July 2026]** Our solution paper is available on arXiv: [https://arxiv.org/abs/2603.23960](https://arxiv.org/abs/2603.23960). -->
+- 📖 **[July 2026]** Our solution paper is available [here](./assets/IJCAI_ECAI_26_challenge_track2.pdf).
 
 ## Overview
 
