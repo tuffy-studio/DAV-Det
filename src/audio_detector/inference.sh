@@ -3,7 +3,7 @@
 export CUDA_VISIBLE_DEVICES=0
 # Configuration
 PEAV_CHECKPOINT="./pe-av-base"
-CHECKPOINT="./weights/audio_model.pth" 
+CHECKPOINT=""  # TODO
 INPUT_CSV="" # TODO
 OUTPUT_CSV="" # TODO
 

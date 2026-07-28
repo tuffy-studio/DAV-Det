@@ -6,10 +6,10 @@ export CUDA_VISIBLE_DEVICES=6
 data_eval="" # TODO: set the path to your evaluation data
 
 # 输出概率 CSV
-output_path="./output_image_prob.csv"
+output_path="" # TODO
 
-# GPS_DINO 微调权重路径
-pretrain_path="" # TODO: set the path to the fine-tuned weights
+# 训练完成模型的权重路径
+pretrain_path="" # TODO: set the path to the trained weights
 
 # DINOv3 预训练权重目录
 backbone_configure="./dinov3-vitl16-pretrain-lvd1689m"

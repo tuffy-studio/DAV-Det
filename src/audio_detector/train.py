@@ -200,7 +200,7 @@ class Trainer:
         num_batches = 0
         accum_steps = self.accum_steps
         
-        pbar = tqdm(self.train_loader, desc=f"Epoch {self.epoch}")
+        pbar = tqdm(self.train_loader, desc=f"Epoch {self.epoch+1}")
         for batch_idx, batch in enumerate(pbar):
             audio = batch['audio'].to(self.device)
             padding_mask = batch['padding_mask'].to(self.device)
