@@ -222,15 +222,13 @@ Checkpoints (`audio_model.{epoch}.pt`) are saved in `--save_dir`.
 
 ## 4 Inference
 
-### 4.1 Download AIGC Detection Model Weights
-
-Before evaluation or inference, please prepare your fine-tuned model, or download the model provided by us. 
+Before evaluation or inference, please prepare your trained model weights, or download the weights provided by us. 
 After downloading, place the weights in:
 
 - Audio weights: `./src/audio_detector/weights/`
 - Video weights: `./src/video_detector/weights/`
 
-### 4.2 Audio Detector Inference
+### 4.1 Audio Detector Inference
 
 The audio detector accepts both raw audio files (`.wav`, `.flac`, `.mp3`, etc.) and video files (`.mp4`, etc.). For video inputs, the audio track is automatically extracted via `ffmpeg` and saved as a mono `16 kHz` WAV file in the same directory.
 
@@ -258,7 +256,7 @@ file_path,prob
 
 `prob` is the **fake probability**.
 
-### 4.3 Video Detector Inference
+### 4.2 Video Detector Inference
 
 ```bash
 conda activate video_detector_env
