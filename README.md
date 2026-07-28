@@ -283,7 +283,7 @@ video_path,prob
 > **Note**: Because the video detector is actually a **frame-level detector**, we also provide a frame-level prediction script at `src/video_detector/inference_image.sh`. You can use it to directly predict fake probabilities for individual image frames.
 > Before running, fill in the empty paths in `inference_image.sh`.
 
-### 4.4 Decision-Level Fusion
+### 4.3 Decision-Level Fusion
 
 After obtaining audio and video fake probabilities, run the fusion script to generate the final binary and four-class predictions:
 
