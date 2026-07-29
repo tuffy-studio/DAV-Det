@@ -26,7 +26,7 @@
 - 🎉 **[June 2026]**  The training and inference code is released.
 - 🤗 **[June 2026]**  The model weights of DAV-Det trained on the MVAD dataset are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
 - 🤗 **[July 2026]**  The model weights of DAV-Det trained on the FakeAVCeleb dataset are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
-- 📖 **[July 2026]** Our solution paper is available [here](./assets/IJCAI_ECAI_26_challenge_track2.pdf) and [arXiv](https://arxiv.org/abs/2607.25543).
+- 📖 **[July 2026]** Our solution paper is available [here](https://arxiv.org/abs/2607.25543).
 
 ## Overview
 
