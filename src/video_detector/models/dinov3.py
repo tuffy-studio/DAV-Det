@@ -3,52 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModel
 import math
-import re
-
-class DINOv3Model(nn.Module):
-    def __init__(
-        self,
-        backbone_name,
-        layer_indices=None,   # 优先：直接指定，如 [6, 9, 11]
-        num_last_layers=4,    # 备用：取最后 N 层
-    ):
-        super().__init__()
-
-        self.backbone = AutoModel.from_pretrained(backbone_name)
-        print(self.backbone)
-
-        for p in self.backbone.parameters():
-            p.requires_grad = False # 冻结预训练模型参数
-
-        encoder_layers = self.backbone.model.layer
-        N = len(encoder_layers)
-        print(f"Backbone has {N} layers.") # 从0开始计数
-
-        if layer_indices is not None:
-            self.layer_indices = [i for i in layer_indices]
-        else:
-            self.layer_indices = list(range(N - num_last_layers, N))
-
-    def forward(self, x):
-        with torch.no_grad():
-            outputs = self.backbone(pixel_values=x, output_hidden_states=True)
-
-        cls_tokens = torch.stack(
-            [outputs.hidden_states[i][:, 0, :] for i in self.layer_indices],
-            dim=1
-        ).float()
-
-        register_tokens = torch.stack(
-            [outputs.hidden_states[i][:, 1:5, :] for i in self.layer_indices],
-            dim=1
-        ).float()
-
-        patch_tokens = torch.stack(
-            [outputs.hidden_states[i][:, 5:, :] for i in self.layer_indices],
-            dim=1
-        ).float()
-
-        return cls_tokens, register_tokens, patch_tokens
 
 class LinearLoRA(nn.Module):
     def __init__(self, base_linear, r=32, lora_alpha=64, dropout_rate=0.0, train_bias=False):
@@ -141,7 +95,6 @@ def inject_lora(
 
     return applied
 
-
 def inject_lora_layer(
     model,
     target_modules=("q_proj", "v_proj"),  # 修改为你要注入的模块名称
@@ -196,7 +149,7 @@ class DINOv3Model_LORA(nn.Module):
         layer_indices=None,
         use_lora=True,
         lora_r=32,
-        lora_alpha=64,
+        lora_alpha=16,
         lora_dropout=0.1,
         unfreeze_norm=False,
     ):
