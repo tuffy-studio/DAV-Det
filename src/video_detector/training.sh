@@ -20,7 +20,7 @@ restart_epoch=1
 if_new_epoch=True
 
 
-save_dir="./fakeavceleb_full"
+save_dir="./" # TODO: set the path to save model
 save_model=True
 
 mkdir -p $save_dir

@@ -175,11 +175,6 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 def train(model, train_loader, train_sampler, args):
-    """
-    支持 GPS_DINO deep supervision (layers 21,22,23,24) 的训练函数。
-    参照 train_GPS 编写，增加对 deep supervision 各层损失的计算和监控。
-    训练流程：degraded + origin 双路 + consistency loss + deep supervision。
-    """
     world_size = dist.get_world_size()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_grad_enabled(True)
