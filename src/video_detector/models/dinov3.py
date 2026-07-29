@@ -5,7 +5,7 @@ from transformers import AutoModel
 import math
 
 class LinearLoRA(nn.Module):
-    def __init__(self, base_linear, r=32, lora_alpha=64, dropout_rate=0.0, train_bias=False):
+    def __init__(self, base_linear, r=32, lora_alpha=16, dropout_rate=0.0, train_bias=False):
         super().__init__()
         if not isinstance(base_linear, nn.Linear):
             raise TypeError('DINOv3LinearLoRA expects an nn.Linear module.')
@@ -51,7 +51,7 @@ def inject_lora(
     model,
     target_modules=("query","value","q","v"),#("query", "key", "value", "qkv", "proj"),
     r=32,
-    alpha=64,
+    alpha=16,
     dropout=0.0,
     layer_indices=None,
     verbose=True,
@@ -99,7 +99,7 @@ def inject_lora_layer(
     model,
     target_modules=("q_proj", "v_proj"),  # 修改为你要注入的模块名称
     r=32,
-    alpha=64,
+    alpha=16,
     dropout=0.0,
     layer_indices=None,  # 指定哪些层需要注入
     verbose=True,
