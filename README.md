@@ -27,7 +27,7 @@
 - 🤗 **[June 2026]**  The model weights of DAV-Det trained on the MVAD dataset are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
 - 🤗 **[July 2026]**  The model weights of DAV-Det trained on the FakeAVCeleb dataset are provided [here](https://huggingface.co/JielunPeng/DAV-Det).
 - 📖 **[July 2026]** Our solution paper is available [here](https://arxiv.org/abs/2607.25543).
-- 🖥️ **[July 2026]** Thanks to Apolinario from Hugging Face, an demo app of our work is developed [here](https://huggingface.co/spaces/hugging-apps/dav-det-aigc-detector).
+- 🖥️ **[July 2026]** Thanks to Apolinario from Hugging Face, a demo app of our work is developed [here](https://huggingface.co/spaces/hugging-apps/dav-det-aigc-detector).
 
 ## Overview
 
