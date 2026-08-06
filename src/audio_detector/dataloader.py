@@ -14,11 +14,14 @@ Evaluation:
 
 import os
 import csv
+import glob
 import random
 import tempfile
 import torch
 import torchaudio
 import numpy as np
+import soundfile
+from scipy import signal
 from torch.utils.data import Dataset, DataLoader
 from typing import Optional, List
 
@@ -145,6 +148,92 @@ def apply_audio_compression(waveform: torch.Tensor, sr: int, bitrate: str) -> to
                 os.remove(p)
 
 
+class RealAudioAugmentor:
+    """
+    Realistic audio augmentor using RIRS_NOISES (reverb) and MUSAN (noise).
+    
+    Requires:
+        - RIRS_NOISES: https://www.openslr.org/28/
+        - MUSAN: https://www.openslr.org/17/
+    """
+    def __init__(self, rir_path: Optional[str] = None, musan_path: Optional[str] = None):
+        self.noisetypes = ['noise', 'speech', 'music']
+        self.noisesnr = {'noise': [0, 15], 'speech': [13, 20], 'music': [5, 15]}
+        self.numnoise = {'noise': [1, 1], 'speech': [3, 8], 'music': [1, 1]}
+        
+        self.noiselist = {}
+        self.rir_files = []
+        
+        if musan_path is not None and os.path.exists(musan_path):
+            self.noiselist = self._load_noiselist(musan_path)
+            print(f"  Loaded MUSAN: {sum(len(v) for v in self.noiselist.values())} noise files")
+        
+        if rir_path is not None and os.path.exists(rir_path):
+            self.rir_files = glob.glob(os.path.join(rir_path, '*/*/*/*.wav'))
+            print(f"  Loaded RIRS: {len(self.rir_files)} RIR files")
+    
+    def _load_noiselist(self, musan_path: str) -> dict:
+        noiselist = {}
+        augment_files = glob.glob(os.path.join(musan_path, '*/*/*.wav'))
+        for file in augment_files:
+            category = file.split('/')[-3]
+            if category not in noiselist:
+                noiselist[category] = []
+            noiselist[category].append(file)
+        return noiselist
+    
+    def available(self, aug_type: str) -> bool:
+        """Check if an augmentation type is available."""
+        if aug_type == 'reverb':
+            return len(self.rir_files) > 0
+        if aug_type in self.noisetypes:
+            return aug_type in self.noiselist and len(self.noiselist[aug_type]) > 0
+        return False
+    
+    def add_rev(self, audio: np.ndarray, audio_length: int) -> np.ndarray:
+        """Add reverberation using real RIR convolution."""
+        if len(self.rir_files) == 0:
+            return audio
+        
+        rir_file = random.choice(self.rir_files)
+        rir, sr = soundfile.read(rir_file)
+        rir = np.expand_dims(rir.astype(np.float32), 0)
+        rir = rir / np.sqrt(np.sum(rir ** 2) + 1e-8)
+        
+        # audio: (1, T), rir: (1, R)
+        rev_audio = signal.convolve(audio, rir, mode='full')[:, :audio_length]
+        return rev_audio
+    
+    def add_noise(self, audio: np.ndarray, noisecat: str, audio_length: int) -> np.ndarray:
+        """Add real background noise from MUSAN."""
+        if noisecat not in self.noiselist or len(self.noiselist[noisecat]) == 0:
+            return audio
+        
+        clean_db = 10 * np.log10(np.mean(audio ** 2) + 1e-4)
+        numnoise = self.numnoise[noisecat]
+        noiselist = random.sample(
+            self.noiselist[noisecat],
+            min(random.randint(numnoise[0], numnoise[1]), len(self.noiselist[noisecat]))
+        )
+        noises = []
+        
+        for noise in noiselist:
+            noiseaudio, sr = soundfile.read(noise)
+            length = audio_length
+            if noiseaudio.shape[0] <= length:
+                shortage = length - noiseaudio.shape[0]
+                noiseaudio = np.pad(noiseaudio, (0, shortage), mode='wrap')
+            start_frame = np.int64(random.random() * (noiseaudio.shape[0] - length))
+            noiseaudio = noiseaudio[start_frame:start_frame + length]
+            noiseaudio = np.stack([noiseaudio], axis=0)
+            noise_db = 10 * np.log10(np.mean(noiseaudio ** 2) + 1e-4)
+            noisesnr = random.uniform(self.noisesnr[noisecat][0], self.noisesnr[noisecat][1])
+            noises.append(np.sqrt(10 ** ((clean_db - noise_db - noisesnr) / 10)) * noiseaudio)
+        
+        noise = np.sum(np.concatenate(noises, axis=0), axis=0, keepdims=True)
+        return noise + audio
+
+
 class ADDatasetSimple(Dataset):
     """
     ADD Dataset for simple binary classification.
@@ -163,6 +252,8 @@ class ADDatasetSimple(Dataset):
         augment: bool = False,
         augment_intensity: int = 3,  # 1-5, controls perturbation strength
         num_augment: int = 2,  # number of augmentations to apply each time (1-4)
+        rir_path: Optional[str] = None,  # path to RIRS_NOISES
+        musan_path: Optional[str] = None,  # path to MUSAN
     ):
         self.audio_dir = audio_dir
         self.sampling_rate = sampling_rate
@@ -171,6 +262,12 @@ class ADDatasetSimple(Dataset):
         self.augment = augment and (mode == "train")
         self.augment_intensity = max(1, min(5, augment_intensity))  # clamp to 1-5
         self.num_augment = max(1, min(4, num_augment))  # clamp to 1-4
+        
+        # Initialize realistic augmentor
+        self.real_aug = None
+        if self.augment and (rir_path is not None or musan_path is not None):
+            print("  Initializing realistic augmentor...")
+            self.real_aug = RealAudioAugmentor(rir_path=rir_path, musan_path=musan_path)
         
         # Read CSV
         self.samples = []
@@ -263,6 +360,7 @@ class ADDatasetSimple(Dataset):
         - Randomly samples intensity from 1 to augment_intensity
         - Randomly selects num_augment augmentations from available types
         
+        Priority: realistic augmentations (RIR reverb, MUSAN noise) > synthetic
         """
         # Random intensity for this sample
         intensity = random.randint(1, self.augment_intensity)
@@ -270,7 +368,47 @@ class ADDatasetSimple(Dataset):
         # Define all augmentation types
         augmentations = []
         
-        # --- 1. Gaussian Noise ---
+        # --- 1. Realistic Noise (MUSAN) ---
+        def aug_real_noise(wf):
+            # Convert to numpy for RealAudioAugmentor
+            if wf.ndim == 2:
+                wf_np = wf.squeeze(0).numpy()
+            else:
+                wf_np = wf.numpy()
+            wf_np = np.stack([wf_np], axis=0)  # (1, T)
+            
+            noisecat = random.choice(self.real_aug.noisetypes)
+            if self.real_aug.available(noisecat):
+                wf_np = self.real_aug.add_noise(wf_np, noisecat, wf_np.shape[1])
+            
+            wf_out = torch.from_numpy(wf_np.squeeze(0)).float()
+            if wf.ndim == 2:
+                wf_out = wf_out.unsqueeze(0)
+            return wf_out
+        
+        if self.real_aug is not None and any(self.real_aug.available(c) for c in self.real_aug.noisetypes):
+            augmentations.append(('real_noise', aug_real_noise))
+        
+        # --- 2. Realistic Reverberation (RIR) ---
+        def aug_real_reverb(wf):
+            if wf.ndim == 2:
+                wf_np = wf.squeeze(0).numpy()
+            else:
+                wf_np = wf.numpy()
+            wf_np = np.stack([wf_np], axis=0)  # (1, T)
+            
+            if self.real_aug is not None and self.real_aug.available('reverb'):
+                wf_np = self.real_aug.add_rev(wf_np, wf_np.shape[1])
+            
+            wf_out = torch.from_numpy(wf_np.squeeze(0)).float()
+            if wf.ndim == 2:
+                wf_out = wf_out.unsqueeze(0)
+            return wf_out
+        
+        if self.real_aug is not None and self.real_aug.available('reverb'):
+            augmentations.append(('real_reverb', aug_real_reverb))
+        
+        # --- 3. Gaussian Noise (fallback) ---
         def aug_noise(wf):
             snr_values = {1: 40, 2: 30, 3: 20, 4: 15, 5: 10}
             snr_db = snr_values[intensity]
@@ -279,7 +417,7 @@ class ADDatasetSimple(Dataset):
             return wf + noise
         augmentations.append(('noise', aug_noise))
         
-        # --- 2. Pitch Shift (fast numpy-based linear interpolation) ---
+        # --- 4. Pitch Shift (fast numpy-based linear interpolation) ---
         def aug_pitch(wf):
             pitch_steps = {1: 2, 2: 4, 3: 6, 4: 8, 5: 10}
             max_steps = pitch_steps[intensity]
@@ -314,7 +452,7 @@ class ADDatasetSimple(Dataset):
                 return wf
         augmentations.append(('pitch', aug_pitch))
         
-        # --- 3. Synthetic Reverberation ---
+        # --- 5. Synthetic Reverberation (fallback) ---
         def aug_reverb(wf):
             reverb_values = {1: 20, 2: 40, 3: 60, 4: 80, 5: 100}
             reverberance = reverb_values[intensity]
@@ -324,7 +462,7 @@ class ADDatasetSimple(Dataset):
             return wf_out
         augmentations.append(('reverb', aug_reverb))
         
-        # --- 4. Audio Compression ---
+        # --- 6. Audio Compression ---
         def aug_compress(wf):
             bitrate_values = {1: '320k', 2: '256k', 3: '192k', 4: '128k', 5: '64k'}
             bitrate = bitrate_values[intensity]
@@ -398,6 +536,8 @@ def get_dataloader(
     num_augment: int = 2,
     shuffle: bool = True,
     num_workers: int = 4,
+    rir_path: Optional[str] = None,
+    musan_path: Optional[str] = None,
 ) -> DataLoader:
     """
     Create DataLoader.
@@ -414,6 +554,8 @@ def get_dataloader(
         num_augment: Number of augmentations to apply per sample (1-4)
         shuffle: Whether to shuffle
         num_workers: Number of data loading workers
+        rir_path: Path to RIRS_NOISES directory for realistic reverberation, download from https://www.openslr.org/28/
+        musan_path: Path to MUSAN directory for realistic noise, download from https://www.openslr.org/17/
     """
     dataset = ADDatasetSimple(
         csv_path=csv_path,
@@ -424,6 +566,8 @@ def get_dataloader(
         augment=augment,
         augment_intensity=augment_intensity,
         num_augment=num_augment,
+        rir_path=rir_path,
+        musan_path=musan_path,
     )
     
     return DataLoader(
@@ -448,6 +592,8 @@ if __name__ == "__main__":
         augment_intensity=5,
         num_augment=2,
         num_workers=0,
+        rir_path='/data/data2/jielun/ADD/RIRS_NOISES',
+        musan_path='/data/data2/jielun/ADD/musan',
     )
     
     for batch in train_loader:
